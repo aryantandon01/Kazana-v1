@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Kazana",
+    "slug": "kazana",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "kazana",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": ["expo-router", "expo-notifications"],
+    "ios": {
+      "bundleIdentifier": "com.kazana.app",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.kazana.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#2563eb"
+      }
+    },
+    "extra": {
+      "router": { "origin": false }
+    }
+  }
+}

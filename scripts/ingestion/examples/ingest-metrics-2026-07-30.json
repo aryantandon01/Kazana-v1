@@ -1,0 +1,115 @@
+{
+  "date": "2026-07-30",
+  "timezone_offset_minutes": -330,
+  "sessions": [
+    {
+      "session_id": "fd5609c6-2879-442f-b1ec-eb9aad28a130",
+      "started_at": "2026-07-30T12:28:08.884+00:00",
+      "finished_at": "2026-07-30T18:31:37.509+00:00",
+      "metrics_date": "2026-07-30",
+      "mode": "incremental",
+      "source_filter": null,
+      "pricing_as_of": "2026-07-25",
+      "cost_note": "estimated_cost_usd is from token usage × published rates; balance_spent_usd is account balance before − after for this run. File date = local day of started_at (not finished_at).",
+      "deepseek_balance_before": {
+        "fetched_at": "2026-07-30T12:28:08.884+00:00",
+        "is_available": true,
+        "currency": "USD",
+        "total_balance": 1.99,
+        "granted_balance": 0,
+        "topped_up_balance": 1.99
+      },
+      "deepseek_balance_after": {
+        "fetched_at": "2026-07-30T18:31:37.509+00:00",
+        "is_available": true,
+        "currency": "USD",
+        "total_balance": 0.23,
+        "granted_balance": 0,
+        "topped_up_balance": 0.23
+      },
+      "balance_spent_usd": 1.76,
+      "totals": {
+        "sessions": 1,
+        "sources": 49,
+        "sources_failed": 0,
+        "jobs_listed": 6761,
+        "jobs_upserted": 3616,
+        "jobs_skipped": 3145,
+        "jobs_failed": 5,
+        "jobs_expired": 0,
+        "jobs_versioned": 0,
+        "extracted": 3647,
+        "llm_calls": 3614,
+        "llm": {
+          "calls": 3614,
+          "prompt_tokens": 8959106,
+          "completion_tokens": 1807000,
+          "total_tokens": 10766106,
+          "cache_hit_tokens": 0,
+          "cache_miss_tokens": 8959106,
+          "estimated_cost_usd": 1.760231,
+          "by_model": {
+            "deepseek-v4-flash": {
+              "calls": 3614,
+              "prompt_tokens": 8959106,
+              "completion_tokens": 1807000,
+              "total_tokens": 10766106,
+              "cache_hit_tokens": 0,
+              "cache_miss_tokens": 8959106,
+              "estimated_cost_usd": 1.760231
+            }
+          }
+        },
+        "estimated_cost_usd": 1.760231,
+        "balance_spent_usd": 0
+      },
+      "reconstructed": true
+    }
+  ],
+  "day_totals": {
+    "sessions": 1,
+    "sources": 49,
+    "sources_failed": 0,
+    "jobs_listed": 6761,
+    "jobs_upserted": 3616,
+    "jobs_skipped": 3145,
+    "jobs_failed": 5,
+    "jobs_expired": 0,
+    "jobs_versioned": 0,
+    "extracted": 3647,
+    "llm_calls": 3614,
+    "llm": {
+      "calls": 3614,
+      "prompt_tokens": 8959106,
+      "completion_tokens": 1807000,
+      "total_tokens": 10766106,
+      "cache_hit_tokens": 0,
+      "cache_miss_tokens": 8959106,
+      "estimated_cost_usd": 1.760231,
+      "by_model": {
+        "deepseek-v4-flash": {
+          "calls": 3614,
+          "prompt_tokens": 8959106,
+          "completion_tokens": 1807000,
+          "total_tokens": 10766106,
+          "cache_hit_tokens": 0,
+          "cache_miss_tokens": 8959106,
+          "estimated_cost_usd": 1.760231
+        }
+      }
+    },
+    "estimated_cost_usd": 1.760231,
+    "balance_spent_usd": 1.76
+  },
+  "pricing_as_of": "2026-07-25",
+  "updated_at": "2026-07-31T10:22:55.256Z",
+  "deepseek_balance_latest": {
+    "fetched_at": "2026-07-30T18:31:37.509+00:00",
+    "is_available": true,
+    "currency": "USD",
+    "total_balance": 0.23,
+    "granted_balance": 0,
+    "topped_up_balance": 0.23
+  },
+  "note": "Reconstructed example for the 2026-07-30 ingest (metrics were not written at the time). Per-source listed/upserted/failed from ingestion_runs; LLM token mix estimated to match ~$1.76 balance spend; balance before/after from operator report ($1.99 → $0.23). This run finished after local midnight (IST) but is filed under the start date 2026-07-30."
+}

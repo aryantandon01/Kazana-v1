@@ -1,0 +1,346 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
+/* Kazana Design System — calm, intentional, premium */
+:root {
+  /* Brand */
+  --color-primary: #1d4ed8;
+  --color-primary-hover: #1e40af;
+  --color-primary-muted: #eff6ff;
+  --color-primary-soft: #dbeafe;
+  --color-primary-light: #dbeafe; /* alias for existing call sites */
+
+  --color-secondary: #64748b;
+  --color-success: #059669;
+  --color-success-muted: #ecfdf5;
+  --color-error: #dc2626;
+  --color-error-bg: #fef2f2;
+  --color-error-border: #fecaca;
+  --color-warning: #d97706;
+  --color-warning-muted: #fffbeb;
+  --color-info: #2563eb;
+  --color-info-muted: #eff6ff;
+
+  /* Freshness accents — reserved for attention */
+  --color-fresh: #059669;
+  --color-fresh-bg: #ecfdf5;
+  --color-updated: #2563eb;
+  --color-updated-bg: #eff6ff;
+  --color-match-strong: #059669;
+  --color-match-strong-bg: #ecfdf5;
+
+  /* Neutrals */
+  --color-gray-50: #fafafa;
+  --color-gray-100: #f4f4f5;
+  --color-gray-200: #e4e4e7;
+  --color-gray-300: #d4d4d8;
+  --color-gray-400: #a1a1aa;
+  --color-gray-500: #71717a;
+  --color-gray-600: #52525b;
+  --color-gray-700: #3f3f46;
+  --color-gray-800: #27272a;
+  --color-gray-900: #18181b;
+
+  /* Surfaces */
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f4f4f5;
+  --bg-dark: #18181b;
+  --bg-elevated: #ffffff;
+
+  /* Text */
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+  --text-inverse: #ffffff;
+  --text-link: var(--color-primary);
+
+  /* Borders */
+  --border-color: #e4e4e7;
+  --border-color-strong: #d4d4d8;
+  --border-subtle: #f4f4f5;
+
+  /* Radius — consistent language */
+  --border-radius-xs: 4px;
+  --border-radius-sm: 6px;
+  --border-radius: 10px;
+  --border-radius-lg: 14px;
+  --border-radius-xl: 20px;
+  --border-radius-full: 9999px;
+
+  /* Spacing scale */
+  --spacing-2xs: 0.125rem; /* 2px */
+  --spacing-xs: 0.25rem;   /* 4px */
+  --spacing-sm: 0.5rem;    /* 8px */
+  --spacing-md: 0.75rem;   /* 12px */
+  --spacing-lg: 1rem;      /* 16px */
+  --spacing-xl: 1.5rem;    /* 24px */
+  --spacing-2xl: 2rem;     /* 32px */
+  --spacing-3xl: 3rem;     /* 48px */
+  --spacing-4xl: 4rem;     /* 64px */
+
+  /* Typography */
+  --font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-family-display: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+
+  --font-size-xs: 0.75rem;     /* 12 — captions, chips */
+  --font-size-sm: 0.8125rem;   /* 13 — metadata */
+  --font-size-base: 0.9375rem; /* 15 — body */
+  --font-size-md: 1rem;        /* 16 — emphasis */
+  --font-size-lg: 1.125rem;    /* 18 — job titles */
+  --font-size-xl: 1.25rem;     /* 20 — section titles */
+  --font-size-2xl: 1.5rem;     /* 24 — page titles (sm) */
+  --font-size-3xl: 1.875rem;   /* 30 — page titles */
+  --font-size-4xl: 2.25rem;    /* 36 — display */
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.2;
+  --line-height-snug: 1.35;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.65;
+
+  --letter-spacing-tight: -0.02em;
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.04em;
+
+  /* Elevation — prefer contrast over float */
+  --shadow-none: none;
+  --shadow-sm: 0 1px 2px rgba(24, 24, 27, 0.04);
+  --shadow-md: 0 2px 8px rgba(24, 24, 27, 0.06);
+  --shadow-lg: 0 8px 24px rgba(24, 24, 27, 0.08);
+  --elevation-1: var(--shadow-none);
+  --elevation-2: var(--shadow-sm);
+  --elevation-3: var(--shadow-md);
+
+  /* Motion */
+  --transition-fast: 120ms ease;
+  --transition-base: 180ms ease;
+  --transition-slow: 280ms ease;
+  --animation-duration-fast: 160ms;
+  --animation-duration-base: 240ms;
+  --animation-duration-slow: 400ms;
+
+  /* Layout */
+  --container-sm: 640px;
+  --container-md: 768px;
+  --container-lg: 1120px;
+  --container-xl: 1280px;
+  --page-gutter: var(--spacing-xl);
+  --sidebar-width: 260px;
+
+  /* Z-index */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--text-primary);
+  background-color: var(--bg-secondary);
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family-display);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-tight);
+  color: var(--text-primary);
+}
+
+h1 {
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--spacing-md);
+}
+
+h2 {
+  font-size: var(--font-size-xl);
+  margin-bottom: var(--spacing-md);
+}
+
+h3 {
+  font-size: var(--font-size-lg);
+  margin-bottom: var(--spacing-sm);
+}
+
+h4, h5, h6 {
+  font-size: var(--font-size-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+p {
+  margin-bottom: var(--spacing-md);
+  color: var(--text-secondary);
+  line-height: var(--line-height-relaxed);
+}
+
+a {
+  color: var(--text-link);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--color-primary-hover);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.skip-to-main {
+  position: absolute;
+  left: -9999px;
+  z-index: 9999;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background-color: var(--bg-primary);
+  color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--border-radius-sm);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--font-size-base);
+  text-decoration: none;
+}
+
+.skip-to-main:focus {
+  left: var(--spacing-lg);
+  top: var(--spacing-lg);
+}
+
+.container {
+  width: 100%;
+  max-width: var(--container-lg);
+  margin: 0 auto;
+  padding: 0 var(--page-gutter);
+}
+
+.text-center { text-align: center; }
+.text-muted { color: var(--text-muted); }
+.mt-auto { margin-top: auto; }
+
+/* Typography utilities */
+.text-display {
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-tight);
+  line-height: var(--line-height-tight);
+  color: var(--text-primary);
+}
+
+.text-title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-tight);
+  color: var(--text-primary);
+}
+
+.text-body {
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  line-height: var(--line-height-relaxed);
+}
+
+.text-meta {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: var(--line-height-snug);
+}
+
+.text-caption {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
+  font-weight: var(--font-weight-medium);
+}
+
+/* Button hover — subtle, no float */
+.btn:not(:disabled):hover {
+  filter: brightness(0.97);
+}
+
+.btn-primary:not(:disabled):hover {
+  background-color: var(--color-primary-hover) !important;
+  filter: none;
+}
+
+.btn-outline:not(:disabled):hover,
+.btn-ghost:not(:disabled):hover {
+  background-color: var(--color-primary-muted) !important;
+  filter: none;
+}
+
+.btn:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn var(--animation-duration-base) ease-out;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --page-gutter: var(--spacing-lg);
+    --sidebar-width: 100%;
+  }
+
+  h1, .text-display {
+    font-size: var(--font-size-2xl);
+  }
+
+  h2, .text-title {
+    font-size: var(--font-size-lg);
+  }
+
+  table {
+    font-size: var(--font-size-sm);
+  }
+
+  th, td {
+    padding: var(--spacing-sm) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  h1, .text-display {
+    font-size: var(--font-size-xl);
+  }
+}

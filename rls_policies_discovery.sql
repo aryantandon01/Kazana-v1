@@ -1,0 +1,3 @@
+-- RLS for Phase 3 discovery tables
+-- Applied in db/migrations/20260706120000_discovery_matching_notifications.sql
+-- Re-run this file only if you created tables without RLS policies.

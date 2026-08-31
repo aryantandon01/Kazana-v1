@@ -1,0 +1,50 @@
+---
+description: Kazana product vision — AI Hiring Intelligence; assessment engine is the moat
+alwaysApply: true
+---
+
+# Kazana — Product Vision (always apply)
+
+Kazana is an **AI Hiring Intelligence Platform**.
+
+It is **NOT** a job board, ATS, interview-question repository, recruiter CRM, or generic interview platform.
+
+## Moat
+
+- The **assessment engine** is the primary product and long-term moat.
+- Candidate products exist to create value and **learning signals**.
+- Enterprise products **monetize** the calibrated assessment engine.
+- Enterprise workflow data **strengthens** the assessment engine.
+- Candidates and enterprises reinforce one another.
+
+## Decision filter
+
+Before building or suggesting a feature, ask:
+
+> Does this naturally strengthen the assessment engine or one of its learning loops?
+
+If no, push back or redesign. Also ask: does this improve our ability to make better hiring decisions over time?
+
+## Flywheel (strengthen, don't break)
+
+Jobs → Resume Optimization → AI Interview Practice → Real Interview → Interview Experience Submission → Assessment Improvement → Better AI Interviews → More Users
+
+- Jobs = acquisition/retention, **not** differentiation.
+- Resume Optimization = interview readiness.
+- AI Interviews = flagship B2C experience.
+- Interview reports are **confidence-scored** (probabilistic)—avoid binary verified/unverified as the primary model.
+
+## Engineering / AI defaults
+
+- Prefer **reusable structured data**, **confidence-aware** outputs, **explainability**, and **calibration**.
+- Do **not** re-parse raw job descriptions in matching/filters; consume canonical extraction / facets / tags.
+- Keep AI **provider-agnostic** (adapters, versioned prompts, replaceable models).
+- Use AI where it measurably improves hiring quality—not for novelty.
+- Every architectural choice should support **long-term learning**.
+
+## Docs of record
+
+- `docs/vision.md` — manifesto
+- `docs/product.md` — product strategy
+- `docs/roadmap.md` — phases 1–5
+- `docs/architecture.md` — technical alignment
