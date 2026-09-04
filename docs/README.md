@@ -25,6 +25,7 @@ We are **not** a job board, ATS, interview-question repo, recruiter CRM, or gene
 | Frontend | [architecture.md](./architecture.md) → [frontend.md](./frontend.md) → [api.md](./api.md) |
 | Backend / platform | [architecture.md](./architecture.md) → [backend.md](./backend.md) → [database.md](./database.md) → [ingestion.md](./ingestion.md) |
 | Matching / jobs | [matching.md](./matching.md) → [ingestion.md](./ingestion.md) |
+| Credits / billing | [credits.md](./credits.md) → [decisions.md](./decisions.md) (ADR-018) |
 | AI coding assistants | [vision.md](./vision.md) → [architecture.md](./architecture.md) → [decisions.md](./decisions.md) → subsystem doc for the task |
 
 ---
@@ -43,6 +44,7 @@ docs/
 ├── database.md            ← Schema, RLS, migrations
 ├── ingestion.md           ← Job ETL / extraction
 ├── matching.md            ← Job–candidate matching
+├── credits.md             ← AI Credits & Entitlements
 ├── notifications.md       ← Push
 ├── api.md                 ← API contracts
 ├── deployment.md          ← Envs, CI/CD

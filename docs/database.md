@@ -96,6 +96,21 @@ SQL: `create_jobs_tables.sql`, RLS: `rls_policies_jobs.sql`, semantic: `db/migra
 
 See [ingestion.md](./ingestion.md) (Facets vs Tags) and [matching.md](./matching.md) for field-level detail.
 
+## Credits & Entitlements tables
+
+| Table | Purpose |
+|-------|---------|
+| `plans` | Free/Premium catalog; welcome + monthly credit grants (configurable) |
+| `plan_entitlements` | Feature access per plan (`jobs`, `matching`, `resume_optimization`, …) |
+| `subscriptions` | User → plan, provider-agnostic status + billing period |
+| `credit_transactions` | Append-only ledger (positive = grant/purchase/refund, negative = usage/expiration) |
+| `credit_operations` | AI operation lifecycle (`reserved → consumed | refunded`) + idempotency key |
+| `user_credits` | Cached balance (`available_credits ≥ 0`, `reserved_credits ≥ 0`) |
+| `ai_operations` | Central AI operation catalog with configurable `credit_cost` |
+| `ai_usage` | Actual provider/model/token consumption per call (unit economics) |
+
+All credit mutations go through `SECURITY DEFINER` functions (`credit_reserve`, `credit_finalize`, `credit_release`, `credit_grant`, `credit_expire`, `credit_adjust`, `process_monthly_grants`, `release_stale_reservations`) granted **only to `service_role`**. Ledger tables have owner-read-only RLS — the client can never write. Migration: `db/migrations/20260901010000_ai_credits_entitlements.sql`. Details: [credits.md](./credits.md).
+
 ---
 
 ## Storage

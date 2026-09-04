@@ -13,6 +13,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
     "ingest": "node scripts/ingestion/index.js",
     "ingest:full": "node scripts/ingestion/index.js --full",
     "extract:reprocess": "node scripts/ingestion/reprocess-extraction.js",
@@ -44,7 +47,8 @@
     "eslint-config-next": "^15.3.4",
     "fast-xml-parser": "^5.9.3",
     "patch-package": "^8.0.0",
-    "postinstall-postinstall": "^2.1.0"
+    "postinstall-postinstall": "^2.1.0",
+    "vitest": "^3.2.4"
   },
   "resolutions": {
     "pdfjs-dist": "5.4.54"

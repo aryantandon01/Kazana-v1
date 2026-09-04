@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import { useAuth } from '@/context/AuthContext';
+import { useCredits } from '@/context/CreditsContext';
 import Card from '@/components/Card';
 import Button from '@/components/Button';
 import Alert from '@/components/Alert';
@@ -12,16 +13,24 @@ import PageHeader from '@/components/PageHeader';
 import Toast from '@/components/Toast';
 
 const QUICK_ACTIONS = [
-  { action: 'general_review', label: 'General Review' },
-  { action: 'ats_review', label: 'ATS Check' },
-  { action: 'rewrite_bullets', label: 'Improve Bullets' },
-  { action: 'rewrite_summary', label: 'Rewrite Summary' },
+  { action: 'general_review', label: 'General Review', operation: 'resume_optimization' },
+  { action: 'ats_review', label: 'ATS Check', operation: 'resume_optimization' },
+  { action: 'rewrite_bullets', label: 'Improve Bullets', operation: 'resume_rewrite' },
+  { action: 'rewrite_summary', label: 'Rewrite Summary', operation: 'resume_rewrite' },
 ];
+
+/** Build a human-friendly insufficient-credits message. */
+function insufficientCreditsMessage(required, available) {
+  const need = required ?? 5;
+  const have = available ?? 0;
+  return `You need ${need} AI Credits to run this, but you have ${have}.`;
+}
 
 export default function ResumeCopilot() {
   const { id } = useParams();
   const router = useRouter();
   const { user } = useAuth();
+  const { operations, ai_credits, refresh: refreshCredits } = useCredits();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
@@ -76,15 +85,22 @@ export default function ResumeCopilot() {
     setSending(true);
     setError(null);
     try {
+      const idempotencyKey = crypto.randomUUID ? crypto.randomUUID() : `k_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       const { data } = await apiFetch(`/api/resumes/${id}/copilot`, {
         method: 'POST',
-        body: JSON.stringify({ message: messageText, action, jobId }),
+        body: JSON.stringify({ message: messageText, action, jobId, idempotencyKey }),
       });
       setMessages(data.session?.messages || []);
       setSuggestions(data.suggestions || []);
       setPendingSuggestions((prev) => [...(data.suggestions || []), ...prev]);
+      refreshCredits();
     } catch (err) {
-      setError(err.message);
+      if (err.code === 'INSUFFICIENT_CREDITS' || err.status === 402) {
+        const d = err.details || {};
+        setError(insufficientCreditsMessage(d.required, d.available));
+      } else {
+        setError(err.message);
+      }
     } finally {
       setSending(false);
     }
@@ -254,14 +270,38 @@ export default function ResumeCopilot() {
         {/* Quick actions */}
         {!showJobPicker && (
           <div style={{ padding: 'var(--spacing-md) var(--spacing-xl)', borderTop: '1px solid var(--border-color)', display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap' }}>
-            {QUICK_ACTIONS.map((q) => (
-              <Button key={q.action} variant="outline" size="sm" onClick={() => handleQuickAction(q.action)} disabled={sending}>
-                {q.label}
-              </Button>
-            ))}
-            <Button variant="outline" size="sm" onClick={() => setShowJobPicker(true)} disabled={sending}>
-              Optimize for a job
-            </Button>
+            {QUICK_ACTIONS.map((q) => {
+              const cost = Number(operations?.[q.operation]?.credit_cost) || 0;
+              const blocked = cost > 0 && ai_credits < cost;
+              return (
+                <Button
+                  key={q.action}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickAction(q.action)}
+                  disabled={sending || blocked}
+                  title={blocked ? `Requires ${cost} AI Credits — you have ${ai_credits}` : undefined}
+                >
+                  {q.label}
+                  {cost > 0 ? ` · ${cost} ✦` : ''}
+                </Button>
+              );
+            })}
+            {(() => {
+              const cost = Number(operations?.resume_tailoring?.credit_cost) || 0;
+              const blocked = cost > 0 && ai_credits < cost;
+              return (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowJobPicker(true)}
+                  disabled={sending || blocked}
+                  title={blocked ? `Requires ${cost} AI Credits — you have ${ai_credits}` : undefined}
+                >
+                  Optimize for a job{cost > 0 ? ` · ${cost} ✦` : ''}
+                </Button>
+              );
+            })()}
           </div>
         )}
 

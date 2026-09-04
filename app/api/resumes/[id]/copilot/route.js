@@ -1,11 +1,36 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api/auth';
-import { internalError, notFound, validationError } from '@/lib/api/errors';
+import { internalError, notFound, validationError, apiError, paymentRequired } from '@/lib/api/errors';
 import {
   ensureResumeParsed,
   generateSuggestions,
 } from '@/lib/resume-optimization/engine';
 import { shapeJobSemantics } from '@/lib/jobs/semantic';
+import { resolveResumeOperationSlug } from '@/lib/credits/catalog';
+import { CREDITS_ERROR_CODES } from '@/lib/credits/errors';
+
+/** Convert a CreditsError to a user-friendly HTTP response. */
+function creditErrorResponse(err) {
+  const code = err?.code;
+  if (code === CREDITS_ERROR_CODES.INSUFFICIENT_CREDITS) {
+    const d = err.details || {};
+    return paymentRequired('Insufficient AI credits.', {
+      code: CREDITS_ERROR_CODES.INSUFFICIENT_CREDITS,
+      required: d.required,
+      available: d.available,
+    });
+  }
+  if (code === CREDITS_ERROR_CODES.PLAN_REQUIRED) {
+    return apiError('PLAN_REQUIRED', err.message, 403);
+  }
+  if (code === CREDITS_ERROR_CODES.OPERATION_DISABLED) {
+    return apiError('OPERATION_DISABLED', err.message, 403);
+  }
+  if (code === CREDITS_ERROR_CODES.IDEMPOTENT_REPLAY) {
+    return apiError('IDEMPOTENT_REPLAY', err.message, 409);
+  }
+  return apiError('CREDIT_ERROR', err.message || 'Credit error', 402);
+}
 
 /**
  * GET /api/resumes/[id]/copilot
@@ -184,6 +209,10 @@ export async function POST(request, { params }) {
     };
 
     const action = body.action || 'general_review';
+    const operationSlug = resolveResumeOperationSlug(action);
+    // Client-generated idempotency key (reused on retries so a retry can never
+    // double-charge). Generated server-side as a fallback.
+    const idempotencyKey = body.idempotencyKey || crypto.randomUUID();
     let jobContext = null;
     let jobId = body.jobId || null;
 
@@ -212,8 +241,8 @@ export async function POST(request, { params }) {
 
     const goal = resolveGoal(action, body.message, jobContext);
 
-    // Generate AI suggestions — LLM persistence can fail. Degrade to a clear
-    // chat message instead of surfacing a raw 500.
+    // Generate AI suggestions — runs through the AI credit gate. Credit
+    // failures surface as 402/403; other LLM failures degrade to a chat message.
     let result = { analysis: '', suggestions: [], questions: [] };
     try {
       result = await generateSuggestions({
@@ -223,8 +252,13 @@ export async function POST(request, { params }) {
         parsed,
         goal,
         jobContext,
+        operationSlug,
+        idempotencyKey,
       });
     } catch (err) {
+      if (err && err.name === 'CreditsError') {
+        return creditErrorResponse(err);
+      }
       const suggestionError = err instanceof Error ? err.message : String(err);
       result = {
         analysis: parseError

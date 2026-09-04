@@ -73,6 +73,7 @@ Better assessments → candidate value + enterprise products
 | **Experience reports** | Confidence-scored interview submissions | Calibration labels |
 | **Enterprise screening / workflow** (future) | Screens, scorecards, notes | Monetization + outcome labels |
 | **Notifications** | Push / digests | Retention into the flywheel |
+| **Credits / entitlements** | AI Credits ledger, plans, entitlements, AI usage/cost tracking | Monetization + unit economics |
 
 Contexts share **PostgreSQL** and **async workers**—not in-process singletons.
 
@@ -138,6 +139,7 @@ Current example: job extraction ETL (`scripts/ingestion/extraction/`) with DeepS
 | Jobs + extraction + matching | Implemented | Feeds practice targeting |
 | Assessment engine | Live v2 (`/practice`: normalized `practice_dimension_scores`, competency vector, deterministic weighted rollup, reproducible provider/model/prompt/rubric/temperature) | Calibration store + outcome correlation (Phase 2) |
 | Interview experience reports | Live v1 (`/share`, `/reports`: confidence-scored, probabilistic) | Corroboration graph + calibration labels |
+| AI Credits & Entitlements | Live (ledger, atomic reserve/finalize/release, idempotency, configurable `ai_operations` catalog, `ai_usage` telemetry, Free/Premium plans + provider-agnostic billing abstraction; resume optimization is gated) | Payment provider, credit packs, calibration-driven pricing |
 | Enterprise | Not built | Phases 3–5 |
 
 ---

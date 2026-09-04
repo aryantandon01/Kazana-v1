@@ -29,6 +29,7 @@ Records significant architectural decisions in ADR format for long-term maintain
 | [ADR-015](#adr-015-confidence-scored-interview-experience-reports) | Confidence-scored interview experience reports | Accepted |
 | [ADR-016](#adr-016-normalized-assessment-engine-v2) | Normalized Assessment Engine v2 | Accepted |
 | [ADR-017](#adr-017-resume-copilot-structured-resume-optimization) | Resume Copilot — structured resume optimization | Accepted |
+| [ADR-018](#adr-018-ai-credits-entitlements) | AI Credits & Entitlements | Accepted |
 
 ---
 
@@ -712,6 +713,66 @@ Phase 1 required **Resume Optimization** as the missing flywheel link between jo
 - Skills extraction feeding the matching engine (replacing `FAMILY_SKILL_PRIORS`).
 - Diff comparison UI between versions.
 - Calibration: measure whether accepted suggestions correlate with real interview outcomes.
+
+
+## ADR-018: AI Credits & Entitlements
+
+**Status:** Accepted
+**Date:** 2026-09-01
+
+### Context
+
+AI features (Resume Optimization today; tailoring, rewriting, interviews, and career tools later) consume real model costs. Kazana needed a production-grade usage-control and monetization layer that:
+
+- exposes one universal, user-visible currency ("AI Credits") — never tokens or model prices
+- keeps Free/Premium entitlements separate from the credit ledger
+- is auditable end-to-end and cannot be manipulated from the client
+- survives concurrent requests (no double-spend, no negative balances)
+- is provider-agnostic (DeepSeek/Stripe/model changes must not touch the credit system)
+- measures actual AI cost separately from user-visible credits (unit economics)
+
+### Decision
+
+Three deliberately separate concepts:
+
+1. **Plans & entitlements** — `plans`, `plan_entitlements`, `subscriptions`. Feature access per plan, configurable in the DB. Jobs/matching/job-alerts remain unlimited on every plan.
+2. **Credit ledger** — `credit_transactions` (append-only source of truth), `credit_operations` (AI operation lifecycle + idempotency), `user_credits` (cached balance for atomicity and fast reads).
+3. **AI cost telemetry** — `ai_operations` (central catalog of billable operations and configurable credit costs) and `ai_usage` (actual provider/model/tokens per call, linked to the credit operation that paid for it).
+
+Key mechanics:
+
+- **Atomicity:** every credit mutation is a `SECURITY DEFINER` Postgres function (`credit_reserve`, `credit_finalize`, `credit_release`, `credit_grant`, …) executed with the service role only. Reserve takes a `FOR UPDATE` lock on the user's balance row, re-reads the ledger sum, and either debits or raises `insufficient_credits`. Concurrent requests serialize on the lock.
+- **Reserve → run → finalize/release:** credits are debited at reservation time (the ledger already reflects the hold). Success → `credit_finalize` (mark consumed). Any failure → `credit_release` creates a compensating `+refund` ledger row. A scheduled reconciliation refunds stale reservations automatically (crashed requests can never permanently consume credits).
+- **Idempotency:** a unique `(user_id, idempotency_key)` on the ledger and a unique `(user_id, type, reference_id)` for grants. Browser retries cannot double-charge; webhook retries cannot double-grant.
+- **Expiration:** positive grants carry `expires_at`; `credit_expire` materializes expired credits as auditable `expiration` rows (nothing is deleted). Expired credits cannot be consumed.
+- **No hardcoded costs:** every AI operation's cost lives in `ai_operations.credit_cost`. Routes resolve the operation → cost → authorize → reserve → run. Model/provider changes never touch the credit system.
+- **Client safety:** all credit tables have owner-read-only RLS (no insert/update/delete policies); credit RPCs are `REVOKE`d from `anon`/`authenticated` and granted only to `service_role`. The server uses the service-role client for mutations; user-facing reads use the RLS-scoped client.
+- **Payment provider:** `lib/billing/provider.js` defines the internal interface (`createCustomer`, `createSubscription`, …). The default is a no-op provider. Kazana only ever observes business events ("Premium subscription became active") which trigger idempotent monthly grants.
+
+### Alternatives considered
+
+- A single mutable `users.credits` column — rejected: unauditable, race-prone, no expiration/priority.
+- Application-level `SELECT balance → check → INSERT` — rejected: not atomic under concurrency.
+- Consuming credits after the AI call — rejected: crashes would free-run the AI without payment.
+- Hardcoding costs in routes — rejected: pricing would require code deploys.
+
+### Consequences
+
+- Every billable AI operation now flows through the centralized gate (`lib/credits/gate.js` → `runWithCredits`).
+- Users see "✦ N AI Credits"; the UI shows costs before expensive actions and explains insufficiency.
+- Existing free functionality is untouched: jobs, matching, alerts, uploads, and resume viewing are not charged.
+- Existing users get the Free plan + a configurable welcome grant via migration backfill.
+- `ai_usage` enables answering: cost per feature/model/user, gross margin per user — the inputs to future Premium pricing.
+
+### Future considerations
+
+- Real payment provider (Stripe/Razorpay) behind `lib/billing/provider.js`; credit packs.
+- Full lot-level FIFO consumption accounting (current: fungible pool with soonest-expiry-first expiration).
+- `estimated_cost` population from a configurable model-pricing table.
+- Admin UI for adjustments/refunds (RPCs exist today: `credit_adjust`).
+
+---
+
 
 ---
 
