@@ -223,16 +223,24 @@ ALTER TABLE ai_operations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_usage ENABLE ROW LEVEL SECURITY;
 
 -- Public read for config/catalogs (same convention as confidence_rules / lookup tables)
+DROP POLICY IF EXISTS "public read plans" ON plans;
 CREATE POLICY "public read plans" ON plans FOR SELECT USING (true);
+DROP POLICY IF EXISTS "public read plan entitlements" ON plan_entitlements;
 CREATE POLICY "public read plan entitlements" ON plan_entitlements FOR SELECT USING (true);
+DROP POLICY IF EXISTS "public read ai operations" ON ai_operations;
 CREATE POLICY "public read ai operations" ON ai_operations FOR SELECT USING (true);
 
 -- Owner read only. NO insert/update/delete policies: clients can never fabricate
 -- or mutate credits, subscriptions, or usage.
+DROP POLICY IF EXISTS "owner read subscriptions" ON subscriptions;
 CREATE POLICY "owner read subscriptions" ON subscriptions FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "owner read credit transactions" ON credit_transactions;
 CREATE POLICY "owner read credit transactions" ON credit_transactions FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "owner read user credits" ON user_credits;
 CREATE POLICY "owner read user credits" ON user_credits FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "owner read credit operations" ON credit_operations;
 CREATE POLICY "owner read credit operations" ON credit_operations FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "owner read ai usage" ON ai_usage;
 CREATE POLICY "owner read ai usage" ON ai_usage FOR SELECT USING (auth.uid() = user_id);
 
 -- ---------------------------------------------------------------------------
@@ -279,6 +287,9 @@ INSERT INTO ai_operations (slug, display_name, feature, credit_cost, enabled, mi
 VALUES
   ('resume_analysis',     'Resume Analysis',     'resume_optimization', 0, true, NULL, 'Initial structured parse + deterministic quality analysis of a resume.'),
   ('resume_optimization', 'Resume Optimization', 'resume_optimization', 5, true, NULL, 'General / ATS-focused resume improvement suggestions.'),
+  ('resume_tailoring',    'Resume Tailoring',    'resume_optimization', 8, true, NULL, 'Resume optimization against a specific target job.'),
+  ('resume_rewrite',      'Resume Rewrite',      'resume_optimization', 3, true, NULL, 'Targeted rewrite of bullets or summary sections.')
+ON CONFLICT (slug) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 12. SECURITY DEFINER functions — the ONLY way to mutate the credit system.
@@ -419,10 +430,6 @@ BEGIN
   RETURN QUERY SELECT v_available, v_reserved, v_plan_slug, v_plan_name, v_plan_price, v_plan_currency, v_monthly;
 END;
 $$;
-
-  ('resume_tailoring',    'Resume Tailoring',    'resume_optimization', 8, true, NULL, 'Resume optimization against a specific target job.'),
-  ('resume_rewrite',      'Resume Rewrite',      'resume_optimization', 3, true, NULL, 'Targeted rewrite of bullets or summary sections.')
-ON CONFLICT (slug) DO NOTHING;
 
 DROP TRIGGER IF EXISTS user_credits_updated_at ON user_credits;
 CREATE TRIGGER user_credits_updated_at

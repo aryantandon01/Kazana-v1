@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
+import '@/lib/loadEnv';
 import * as ledger from '@/lib/credits/ledger';
 import { runWithCredits } from '@/lib/credits/gate';
 import { refreshCatalog } from '@/lib/credits/catalog';
