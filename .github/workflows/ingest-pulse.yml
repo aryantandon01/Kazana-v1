@@ -1,0 +1,86 @@
+name: Kazana workers
+
+# Every 5 minutes: refresh jobs (ingest) and match+notify (pulse).
+#
+# Ingest is incremental (per-source `last_fetched_at`), so a warm pass is
+# minutes, not the ~80 min a cold months-long sweep takes. Each job is guarded
+# by a leased DB lock (public.worker_locks), so if a previous run is still in
+# flight the next tick is a no-op instead of overlapping. The two jobs run in
+# parallel: a slow ingest never delays the 5-minute delivery pulse.
+#
+# Required repository secrets:
+#   SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)   — project URL
+#   SUPABASE_SERVICE_ROLE_KEY                    — service role (server only)
+#   DEEPSEEK_API_KEY                             — optional (extraction)
+#   WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID — optional (dormant channel)
+#
+# Optional repository variables: DEEPSEEK_MODEL, WORKER_INGEST_CONCURRENCY,
+# WORKER_MATCH_LOOKBACK_HOURS, WORKER_NOTIFY_LIMIT, WHATSAPP_JOB_MATCH_TEMPLATE.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+# Never run two workflow runs at once. A tick during an active run is queued
+# (GitHub keeps one pending), and the DB locks make any overlap a no-op.
+concurrency:
+  group: kazana-workers
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    name: ingest (once)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sweep job sources (incremental)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+          WORKER_INGEST_CONCURRENCY: ${{ vars.WORKER_INGEST_CONCURRENCY }}
+        run: node scripts/worker/ingest.js --once
+
+  pulse:
+    name: pulse (once)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Match users → dispatch notifications
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_JOB_MATCH_TEMPLATE: ${{ vars.WHATSAPP_JOB_MATCH_TEMPLATE }}
+          WORKER_PULSE_MINUTES: '5'
+          WORKER_MATCH_LOOKBACK_HOURS: ${{ vars.WORKER_MATCH_LOOKBACK_HOURS }}
+          WORKER_NOTIFY_LIMIT: ${{ vars.WORKER_NOTIFY_LIMIT }}
+        run: node scripts/worker/pulse.js --once

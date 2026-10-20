@@ -55,6 +55,47 @@ They are safe to keep alongside the worker: matching upserts are idempotent and
 the dispatcher atomically claims rows, so a row can never be sent twice. Remove
 them if you want a single scheduler.
 
+### GitHub Actions worker scheduler (5-minute cadence, zero infra)
+
+`.github/workflows/ingest-pulse.yml` runs both workers every 5 minutes as **two
+parallel jobs**, so a slow ingest never delays the delivery pulse:
+
+| Job | Command | Timeout |
+|-----|---------|---------|
+| ingest | `node scripts/worker/ingest.js --once` | 45 min |
+| pulse | `node scripts/worker/pulse.js --once` | 10 min |
+
+Both are guarded by a leased DB lock (`public.worker_locks`, migration
+`20261111000000_worker_locks.sql`). If a previous run is still in flight, the
+next tick logs `skipped — previous run still in progress` and exits 0, so runs
+never overlap and a job is never sent twice. A heartbeat extends the lease while
+the run is alive; a crashed run expires automatically (ingest lease 15 min,
+pulse lease 5 min).
+
+The ingest is incremental (`jobs` are fetched only since each source's
+`last_fetched_at`), so a warm pass takes minutes — not the ~80 min a cold,
+months-long sweep takes. `last_fetched_at` is written per source, so a job that
+is killed part-way simply resumes on the next tick.
+
+**Why not Vercel cron for ingest:** a Vercel function is capped at 60 s (Hobby) /
+300 s (Pro), and Vercel cron's minimum interval is daily on Hobby. GitHub
+Actions jobs run up to 6 h, are free for public repositories, and support a
+5-minute cron.
+
+**Repository secrets:** `SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`),
+`SUPABASE_SERVICE_ROLE_KEY`; optional `DEEPSEEK_API_KEY`,
+`WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`.
+
+**Repository variables (optional):** `DEEPSEEK_MODEL`,
+`WORKER_INGEST_CONCURRENCY`, `WORKER_MATCH_LOOKBACK_HOURS`,
+`WORKER_NOTIFY_LIMIT`, `WHATSAPP_JOB_MATCH_TEMPLATE`.
+
+**Before the first scheduled run:** apply the migration
+(`DATABASE_URL=… npm run db:migrate` or paste it into the Supabase SQL Editor).
+Until it is applied the lock helper fails open (logs a warning and runs without
+the guard) — so the workers still function, just without skip-if-running.
+
+
 **Env vars (client):**
 
 - `NEXT_PUBLIC_SUPABASE_URL`

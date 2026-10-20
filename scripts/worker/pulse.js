@@ -3,6 +3,13 @@ import '../../lib/loadEnv.js';
 import { runMatching } from '../../lib/matching/run.js';
 import { runNotifications } from '../../lib/notifications/dispatch.js';
 import { runPulse } from '../../lib/worker/run.js';
+import { supabaseAdmin } from '../ingestion/supabase.js';
+import {
+  acquireWorkerLock,
+  releaseWorkerLock,
+  startLockHeartbeat,
+  workerOwner,
+} from '../../lib/worker/lock.js';
 
 /**
  * Delivery pulse: match every user, then drain the notification queue.
@@ -102,25 +109,51 @@ console.log(
   }),
 );
 
+// Skip-if-running guard: a second pulse (e.g. an overlapping cron tick) is a
+// no-op while this one is still alive. A crashed pulse expires after the TTL.
+const LOCK_NAME = 'pulse';
+const LOCK_TTL_SECONDS = 300;
+const lockOwner = workerOwner(LOCK_NAME);
+
+const lockAcquired = await acquireWorkerLock(supabaseAdmin, LOCK_NAME, {
+  ttlSeconds: LOCK_TTL_SECONDS,
+  owner: lockOwner,
+});
+
+if (!lockAcquired) {
+  console.log('[worker] pulse skipped — previous pulse still running');
+  process.exit(0);
+}
+
+const stopHeartbeat = startLockHeartbeat(supabaseAdmin, LOCK_NAME, {
+  ttlSeconds: LOCK_TTL_SECONDS,
+  owner: lockOwner,
+});
+
 let lastResult = null;
 
-do {
-  lastResult = await runPulse({
-    match: () => runMatching({ sinceHours: lookbackHours }),
-    notify: () => runNotifications({ limit: notifyLimit }),
-  });
+try {
+  do {
+    lastResult = await runPulse({
+      match: () => runMatching({ sinceHours: lookbackHours }),
+      notify: () => runNotifications({ limit: notifyLimit }),
+    });
 
-  if (options.once || stopping) break;
+    if (options.once || stopping) break;
 
-  // Subtract the pulse duration so the cadence stays 5 minutes wall-clock while
-  // still never overlapping two pulses.
-  const waitMs = Math.max(0, intervalMs - (lastResult.duration_ms || 0));
-  console.log(`[worker] pulse next in ${Math.round(waitMs / 1000)}s`);
-  await sleep(waitMs);
-} while (!stopping);
+    // Subtract the pulse duration so the cadence stays 5 minutes wall-clock while
+    // still never overlapping two pulses.
+    const waitMs = Math.max(0, intervalMs - (lastResult.duration_ms || 0));
+    console.log(`[worker] pulse next in ${Math.round(waitMs / 1000)}s`);
+    await sleep(waitMs);
+  } while (!stopping);
 
-if (options.once) {
-  process.exitCode = lastResult?.ok ? 0 : 1;
+  if (options.once) {
+    process.exitCode = lastResult?.ok ? 0 : 1;
+  }
+} finally {
+  stopHeartbeat();
+  await releaseWorkerLock(supabaseAdmin, LOCK_NAME, lockOwner).catch(() => {});
 }
 
 console.log('[worker] pulse stopped');

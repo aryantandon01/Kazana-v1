@@ -2,6 +2,13 @@
 import '../../lib/loadEnv.js';
 import { runIngestion } from '../ingestion/pipeline.js';
 import { runIngestCycle } from '../../lib/worker/run.js';
+import { supabaseAdmin } from '../ingestion/supabase.js';
+import {
+  acquireWorkerLock,
+  releaseWorkerLock,
+  startLockHeartbeat,
+  workerOwner,
+} from '../../lib/worker/lock.js';
 
 /**
  * Continuous ingestion worker.
@@ -98,21 +105,47 @@ console.log(
   JSON.stringify({ mode, concurrency, cooldown_minutes: cooldownMs / 60_000, once: options.once }),
 );
 
+// Skip-if-running guard: if another ingest run still holds the lease, this run
+// is a no-op. The heartbeat keeps the lease alive; a crashed run expires.
+const LOCK_NAME = 'ingest';
+const LOCK_TTL_SECONDS = 900;
+const lockOwner = workerOwner(LOCK_NAME);
+
+const lockAcquired = await acquireWorkerLock(supabaseAdmin, LOCK_NAME, {
+  ttlSeconds: LOCK_TTL_SECONDS,
+  owner: lockOwner,
+});
+
+if (!lockAcquired) {
+  console.log('[worker] ingest skipped — previous run still in progress');
+  process.exit(0);
+}
+
+const stopHeartbeat = startLockHeartbeat(supabaseAdmin, LOCK_NAME, {
+  ttlSeconds: LOCK_TTL_SECONDS,
+  owner: lockOwner,
+});
+
 let lastReport = null;
 
-do {
-  lastReport = await runIngestCycle({
-    ingest: () => runIngestion(undefined, { mode, concurrency }),
-  });
+try {
+  do {
+    lastReport = await runIngestCycle({
+      ingest: () => runIngestion(undefined, { mode, concurrency }),
+    });
 
-  if (options.once || stopping) break;
+    if (options.once || stopping) break;
 
-  console.log(`[worker] ingest cooldown ${cooldownMs / 60_000}m`);
-  await sleep(cooldownMs);
-} while (!stopping);
+    console.log(`[worker] ingest cooldown ${cooldownMs / 60_000}m`);
+    await sleep(cooldownMs);
+  } while (!stopping);
 
-if (options.once) {
-  process.exitCode = lastReport?.ok ? 0 : 1;
+  if (options.once) {
+    process.exitCode = lastReport?.ok ? 0 : 1;
+  }
+} finally {
+  stopHeartbeat();
+  await releaseWorkerLock(supabaseAdmin, LOCK_NAME, lockOwner).catch(() => {});
 }
 
 console.log('[worker] ingest stopped');
