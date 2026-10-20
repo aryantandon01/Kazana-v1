@@ -125,19 +125,33 @@ ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE device_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notification_queue ENABLE ROW LEVEL SECURITY;
 
+-- Postgres has no IF NOT EXISTS form for policies, so each one is dropped
+-- first. That keeps this migration re-runnable (the Supabase SQL Editor does
+-- not track versions, unlike `npm run db:migrate`).
+DROP POLICY IF EXISTS "Users read own profile" ON user_profiles;
 CREATE POLICY "Users read own profile" ON user_profiles FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users insert own profile" ON user_profiles;
 CREATE POLICY "Users insert own profile" ON user_profiles FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users update own profile" ON user_profiles;
 CREATE POLICY "Users update own profile" ON user_profiles FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users read own notification prefs" ON notification_preferences;
 CREATE POLICY "Users read own notification prefs" ON notification_preferences FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users insert own notification prefs" ON notification_preferences;
 CREATE POLICY "Users insert own notification prefs" ON notification_preferences FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users update own notification prefs" ON notification_preferences;
 CREATE POLICY "Users update own notification prefs" ON notification_preferences FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users read own matches" ON matches;
 CREATE POLICY "Users read own matches" ON matches FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users read own device tokens" ON device_tokens;
 CREATE POLICY "Users read own device tokens" ON device_tokens FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users insert own device tokens" ON device_tokens;
 CREATE POLICY "Users insert own device tokens" ON device_tokens FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users update own device tokens" ON device_tokens;
 CREATE POLICY "Users update own device tokens" ON device_tokens FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users delete own device tokens" ON device_tokens;
 CREATE POLICY "Users delete own device tokens" ON device_tokens FOR DELETE USING (auth.uid() = user_id);
 
 -- notification_queue: no client policies (service role / workers only)

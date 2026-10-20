@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api/auth';
 import { internalError, validationError } from '@/lib/api/errors';
+import { normalizePhone } from '@/lib/notifications/phone';
 import {
   notificationPreferencesSchema,
   userProfileSchema,
@@ -11,6 +12,11 @@ const DEFAULT_PREFS = {
   max_pushes_per_day: 5,
   quiet_hours_start: '22:00',
   quiet_hours_end: '08:00',
+  // WhatsApp is opt-in: disabled until the user adds a number.
+  whatsapp_enabled: false,
+  whatsapp_phone: null,
+  whatsapp_min_match_score: 0.7,
+  whatsapp_daily_limit: 3,
 };
 
 const DEFAULT_PROFILE = {
@@ -51,7 +57,19 @@ export async function PATCH(request) {
 
   try {
     const body = await request.json();
-    const notifParsed = notificationPreferencesSchema.safeParse(body.notifications || body);
+
+    // Normalise the WhatsApp number to E.164 before validation so users can
+    // type "+1 (415) 555-0123". An empty value clears the enrolment (null).
+    const notificationsInput = body.notifications
+      ? {
+          ...body.notifications,
+          ...('whatsapp_phone' in body.notifications
+            ? { whatsapp_phone: normalizePhone(body.notifications.whatsapp_phone) }
+            : {}),
+        }
+      : body;
+
+    const notifParsed = notificationPreferencesSchema.safeParse(notificationsInput);
     const profileParsed = userProfileSchema.safeParse(body.profile || {});
 
     if (!notifParsed.success && body.notifications) {

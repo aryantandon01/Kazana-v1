@@ -2,21 +2,18 @@
  * Project canonical extraction onto job_facets / job_tags.
  */
 
+import { resolveTagCategory } from '../classification/catalog.js';
 import { persistJobClassification } from '../classification/persist.js';
 
 /**
- * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {string} jobId
+ * Build the facet/tag projection for a canonical extraction result.
+ * Pure (no I/O) so the tag taxonomy contract can be unit tested.
+ *
  * @param {{ canonical: import('./types.js').CanonicalJob, extraction: Record<string, import('./types.js').ExtractionResult> }} result
  */
-export async function projectExtractionToFacetsTags(supabase, jobId, result) {
+export function buildProjection(result) {
   const { canonical, extraction } = result;
   const conf = (field, fallback = 0.8) => extraction[field]?.confidence ?? fallback;
-  const sourceOf = (field) => {
-    const s = extraction[field]?.source;
-    if (s === 'structured') return 'classifier';
-    return 'classifier';
-  };
 
   const careerAreas = (canonical.careerAreas || []).map((value) => ({
     facet_type: 'career_area',
@@ -72,7 +69,7 @@ export async function projectExtractionToFacetsTags(supabase, jobId, result) {
   const required = (canonical.requiredSkills || []).map((name) => ({
     tag_name: name,
     tag_slug: slugify(name),
-    tag_category: 'skill',
+    tag_category: resolveTagCategory(name),
     tag_source: extraction.requiredSkills?.source === 'structured' ? 'employer' : 'ai',
     confidence_score: conf('requiredSkills'),
   }));
@@ -80,7 +77,7 @@ export async function projectExtractionToFacetsTags(supabase, jobId, result) {
   const preferred = (canonical.preferredSkills || []).map((name) => ({
     tag_name: name,
     tag_slug: slugify(name),
-    tag_category: 'skill',
+    tag_category: resolveTagCategory(name),
     tag_source: 'ai',
     confidence_score: Math.min(conf('preferredSkills', 0.7), 0.75),
   }));
@@ -90,7 +87,7 @@ export async function projectExtractionToFacetsTags(supabase, jobId, result) {
     .map((name) => ({
       tag_name: name,
       tag_slug: slugify(name),
-      tag_category: 'technology',
+      tag_category: resolveTagCategory(name),
       tag_source: 'ai',
       confidence_score: conf('technologies', 0.7),
     }));
@@ -118,10 +115,16 @@ export async function projectExtractionToFacetsTags(supabase, jobId, result) {
     },
   };
 
-  // silence unused
-  void sourceOf;
+  return classification;
+}
 
-  await persistJobClassification(supabase, jobId, classification);
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} jobId
+ * @param {{ canonical: import('./types.js').CanonicalJob, extraction: Record<string, import('./types.js').ExtractionResult> }} result
+ */
+export async function projectExtractionToFacetsTags(supabase, jobId, result) {
+  await persistJobClassification(supabase, jobId, buildProjection(result));
 }
 
 function labelize(value) {

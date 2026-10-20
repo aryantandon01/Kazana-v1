@@ -29,7 +29,9 @@ Records significant architectural decisions in ADR format for long-term maintain
 | [ADR-015](#adr-015-confidence-scored-interview-experience-reports) | Confidence-scored interview experience reports | Accepted |
 | [ADR-016](#adr-016-normalized-assessment-engine-v2) | Normalized Assessment Engine v2 | Accepted |
 | [ADR-017](#adr-017-resume-copilot-structured-resume-optimization) | Resume Copilot — structured resume optimization | Accepted |
-| [ADR-018](#adr-018-ai-credits-entitlements) | AI Credits & Entitlements | Accepted |
+| [ADR-018](#adr-018-email-evidence-structural-classification) | Email evidence structural classification | Accepted |
+| [ADR-019](#adr-019-defer-assessment--monetization-focus-phase-1-on-the-candidate-platform) | Defer assessment & monetization; focus Phase 1 on the candidate platform | Accepted |
+| [ADR-020](#adr-020-multi-channel-notifications-behind-a-provider-registry) | Multi-channel notifications behind a provider registry | Accepted |
 
 ---
 
@@ -375,6 +377,7 @@ Use **FCM via Expo Notifications** as primary push provider.
 
 - `device_tokens` table stores FCM tokens
 - See [notifications.md](./notifications.md)
+- **Extended by [ADR-020](#adr-020-multi-channel-notifications-behind-a-provider-registry)** — push is now one channel behind a provider registry; WhatsApp Cloud API was added as an opt-in second channel. The "FCM *or* OneSignal" choice was a push-only concern and no longer describes the fan-out.
 
 ### Future considerations
 
@@ -536,7 +539,7 @@ Cursor rule: `.cursor/rules/kazana-vision.mdc` (`alwaysApply: true`).
 
 ## ADR-014: AI Interview Practice with structured rubrics
 
-**Status:** Accepted  
+**Status:** Accepted (surface deferred — see ADR-019)  
 **Date:** 2026-08-05
 
 ### Context
@@ -550,7 +553,7 @@ Phase 1 calls for **AI Interview Practice** as the flagship B2C assessment surfa
 - Each session: LLM generates questions → candidate answers each → per-answer evaluation scored against the rubric → final rollup assessment stored on the session.
 - All LLM I/O through `lib/assessment/provider.js` (model-agnostic, mirrors the extraction provider). Prompts live in `lib/assessment/prompts.js` (versioned exports).
 - Fallback deterministic question sets and assessments when the LLM is unavailable, so the feature never hard-fails.
-- `POST /api/practice/sessions`, `GET /api/practice/sessions`, `GET/POST /api/practice/sessions/[id]`, and UI at `/practice` + `/practice/[id]`.
+- `POST /api/practice/sessions`, `GET /api/practice/sessions`, `GET/POST /api/practice/sessions/[id]`, and UI at `/practice` + `/practice/[id]` (**frontend/route surface currently deferred — see ADR-019**).
 
 ### Alternatives considered
 
@@ -618,7 +621,7 @@ Candidates share real interview experiences. Per the vision, reports are **input
 
 ## ADR-016: Normalized Assessment Engine v2
 
-**Status:** Accepted
+**Status:** Accepted (surface deferred — see ADR-019)
 **Date:** 2026-08-06
 
 ### Context
@@ -714,66 +717,6 @@ Phase 1 required **Resume Optimization** as the missing flywheel link between jo
 - Diff comparison UI between versions.
 - Calibration: measure whether accepted suggestions correlate with real interview outcomes.
 
-
-## ADR-018: AI Credits & Entitlements
-
-**Status:** Accepted
-**Date:** 2026-09-01
-
-### Context
-
-AI features (Resume Optimization today; tailoring, rewriting, interviews, and career tools later) consume real model costs. Kazana needed a production-grade usage-control and monetization layer that:
-
-- exposes one universal, user-visible currency ("AI Credits") — never tokens or model prices
-- keeps Free/Premium entitlements separate from the credit ledger
-- is auditable end-to-end and cannot be manipulated from the client
-- survives concurrent requests (no double-spend, no negative balances)
-- is provider-agnostic (DeepSeek/Stripe/model changes must not touch the credit system)
-- measures actual AI cost separately from user-visible credits (unit economics)
-
-### Decision
-
-Three deliberately separate concepts:
-
-1. **Plans & entitlements** — `plans`, `plan_entitlements`, `subscriptions`. Feature access per plan, configurable in the DB. Jobs/matching/job-alerts remain unlimited on every plan.
-2. **Credit ledger** — `credit_transactions` (append-only source of truth), `credit_operations` (AI operation lifecycle + idempotency), `user_credits` (cached balance for atomicity and fast reads).
-3. **AI cost telemetry** — `ai_operations` (central catalog of billable operations and configurable credit costs) and `ai_usage` (actual provider/model/tokens per call, linked to the credit operation that paid for it).
-
-Key mechanics:
-
-- **Atomicity:** every credit mutation is a `SECURITY DEFINER` Postgres function (`credit_reserve`, `credit_finalize`, `credit_release`, `credit_grant`, …) executed with the service role only. Reserve takes a `FOR UPDATE` lock on the user's balance row, re-reads the ledger sum, and either debits or raises `insufficient_credits`. Concurrent requests serialize on the lock.
-- **Reserve → run → finalize/release:** credits are debited at reservation time (the ledger already reflects the hold). Success → `credit_finalize` (mark consumed). Any failure → `credit_release` creates a compensating `+refund` ledger row. A scheduled reconciliation refunds stale reservations automatically (crashed requests can never permanently consume credits).
-- **Idempotency:** a unique `(user_id, idempotency_key)` on the ledger and a unique `(user_id, type, reference_id)` for grants. Browser retries cannot double-charge; webhook retries cannot double-grant.
-- **Expiration:** positive grants carry `expires_at`; `credit_expire` materializes expired credits as auditable `expiration` rows (nothing is deleted). Expired credits cannot be consumed.
-- **No hardcoded costs:** every AI operation's cost lives in `ai_operations.credit_cost`. Routes resolve the operation → cost → authorize → reserve → run. Model/provider changes never touch the credit system.
-- **Client safety:** all credit tables have owner-read-only RLS (no insert/update/delete policies); credit RPCs are `REVOKE`d from `anon`/`authenticated` and granted only to `service_role`. The server uses the service-role client for mutations; user-facing reads use the RLS-scoped client.
-- **Payment provider:** `lib/billing/provider.js` defines the internal interface (`createCustomer`, `createSubscription`, …). The default is a no-op provider. Kazana only ever observes business events ("Premium subscription became active") which trigger idempotent monthly grants.
-
-### Alternatives considered
-
-- A single mutable `users.credits` column — rejected: unauditable, race-prone, no expiration/priority.
-- Application-level `SELECT balance → check → INSERT` — rejected: not atomic under concurrency.
-- Consuming credits after the AI call — rejected: crashes would free-run the AI without payment.
-- Hardcoding costs in routes — rejected: pricing would require code deploys.
-
-### Consequences
-
-- Every billable AI operation now flows through the centralized gate (`lib/credits/gate.js` → `runWithCredits`).
-- Users see "✦ N AI Credits"; the UI shows costs before expensive actions and explains insufficiency.
-- Existing free functionality is untouched: jobs, matching, alerts, uploads, and resume viewing are not charged.
-- Existing users get the Free plan + a configurable welcome grant via migration backfill.
-- `ai_usage` enables answering: cost per feature/model/user, gross margin per user — the inputs to future Premium pricing.
-
-### Future considerations
-
-- Real payment provider (Stripe/Razorpay) behind `lib/billing/provider.js`; credit packs.
-- Full lot-level FIFO consumption accounting (current: fungible pool with soonest-expiry-first expiration).
-- `estimated_cost` population from a configurable model-pricing table.
-- Admin UI for adjustments/refunds (RPCs exist today: `credit_adjust`).
-
----
-
-
 ---
 
 ## How to add a new ADR
@@ -786,6 +729,224 @@ Key mechanics:
 ### Template
 
 ```markdown
+## ADR-018: Email evidence structural classification
+
+**Status:** Accepted  
+**Date:** 2026-09-25
+
+### Context
+
+ADR-015 established confidence-scored interview reports, including an "email
+evidence" bonus (+0.15). It was implemented as `Boolean(emailEvidence.trim())`
+— the mere presence of a non-empty string. Any input, including `x`, earned the
+full bonus, and a hash of that junk was persisted as `email_evidence_hashed`.
+
+Separately, the submission-page copy claimed reports "calibrate Kazana's
+assessments". No pipeline consumes `interview_reports` for calibration; the
+reports are currently a knowledge/data layer only.
+
+### Decision
+
+- Classify evidence into three tiers in `lib/assessment/evidenceValidation.js`:
+  - `none` — nothing supplied → no bonus
+  - `invalid` — supplied but not evidence-shaped → **no bonus**
+  - `plausible` — email-shaped, or a substantial reference → full bonus
+- Only `plausible` evidence earns the `email_evidence` weight and is hashed;
+  junk input is never persisted as an evidence fingerprint.
+- Record the classification inside the existing `confidence` JSONB
+  (`evidence_status`, `evidence_kind`) — **no schema change required**.
+- Read the base percentage for copy from the public
+  `GET /api/reports/confidence-rules` instead of hardcoding "40%".
+- Fix confidence sorting to order by `confidence->>score`, not the `confidence`
+  JSONB column (which sorted structurally by `label`/`level`, silently
+  mis-ordering "Highest confidence").
+- Correct product copy to describe the interview **knowledge base** rather than
+  assessment calibration.
+
+### Alternatives considered
+
+- **Keep the boolean check** — rejected; arbitrary strings received the full
+  bonus, making the signal meaningless.
+- **Company/domain verification** — deferred; no trustworthy company→domain
+  mapping exists in the repo, and building one is a large separate effort.
+- **Store raw evidence to enable validation** — rejected; breaks the privacy
+  model (ADR-015 stores hashes only).
+- **Binary "verified" label** — rejected per vision (probabilistic reasoning).
+- **Redesign the confidence weights** — rejected; the goal is evidence-detection
+  quality, not a new confidence model.
+
+### Trade-offs
+
+- A syntactically valid address still does not prove the user received it, nor
+  that it relates to the claimed company/role. The signal indicates evidence
+  *strength*, never authenticity.
+- Reference detection is heuristic (length / token / letter thresholds): it may
+  accept an unusually long non-evidence string, or reject a terse-but-genuine
+  subject line.
+- Confidence remains a snapshot computed at submission; corroboration does not
+  retroactively raise older reports.
+
+### Consequences
+
+- Arbitrary strings no longer inflate confidence.
+- Junk input is no longer hashed into the evidence column.
+- Copy no longer promises calibration that does not exist.
+- `confidence` stays backwards compatible: older rows simply lack the new
+  `evidence_status` / `evidence_kind` keys, and the UI reads them defensively.
+
+### Future considerations
+
+- Company/domain validation once a trustworthy mapping exists.
+- Stronger evidence verification (forwarding address / magic link) — would
+  justify a tier above `plausible`.
+- Retroactive confidence recomputation as corroboration arrives.
+- Assessment calibration consuming reports (Phase 2) — **not implemented**.
+
+---
+
+## ADR-019: Defer assessment & monetization; focus Phase 1 on the candidate platform
+
+**Status:** Accepted  
+**Date:** 2026-10-07
+
+### Context
+
+The assessment engine (ADR-014, ADR-016) and the AI-credits ledger
+([credits.md](./credits.md)) were built and documented as the flagship product
+and its billing layer. In practice the web frontend never exposed a `/practice`
+surface, the credits UI was mounted but unused, and no pipeline consumes
+practice sessions or charged credits. Meanwhile the candidate platform
+(Resume Vault, Jobs, Matching, Experience Sharing) and Resume Optimization — the
+pieces that actually acquire users and generate structured signal — are where
+traction and near-term value live.
+
+### Decision
+
+- **Phase 1 = the candidate platform**, delivered in ordered sub-phases:
+  1A (Resume Vault, Jobs, Matching, Experience Sharing — live), 1B (**Resume
+  Optimization — the current AI priority**), 1C (platform hardening).
+- **Defer the assessment-engine surface and AI Credits monetization to Phase 2.**
+  The backend engine (`lib/assessment/`), the `practice_*` schema, and the credit
+  ledger remain in the repo — unmetered and not user-facing.
+- **Remove the AI-credits frontend UI** (header badge, modal, context) until
+  monetization returns in Phase 2.
+- Reposition docs and project memory so Resume Optimization — not AI
+  Interviews — is the present AI investment.
+
+### Alternatives considered
+
+- **Keep AI Interview Practice as the Phase 1 flagship** — rejected; the surface
+  was never actually shipped, and splitting focus starves the candidate platform.
+- **Delete the assessment engine and credits code** — rejected; the engine is the
+  long-term moat and the ledger is a reusable AI-operation abstraction. Defer,
+  don't delete.
+- **Leave docs describing the deferred engine as "live"** — rejected; docs MUST
+  reflect engineering reality.
+
+### Trade-offs
+
+- Some built capability (rubrics, confidence scoring, credit ledger) sits unused
+  for a phase.
+- Reintroducing a practice surface later must re-mount a credits UI removed now.
+
+### Consequences
+
+- [roadmap.md](./roadmap.md), [product.md](./product.md), [vision.md](./vision.md),
+  [architecture.md](./architecture.md), [credits.md](./credits.md),
+  [README.md](./README.md), [glossary.md](./glossary.md), and `AGENTS.md` /
+  `.cursor/rules/kazana-vision.mdc` reframe Phase 1 around the candidate platform
+  and Resume Optimization.
+- The credits frontend files were deleted; the API, schema, and `lib/credits/`
+  layer are untouched.
+
+### Future considerations
+
+- Phase 2 re-surfaces AI Interview Practice and restores credits UI / paid gating.
+- The AI-operation abstraction (`lib/credits/gate.js`) is the intended path for
+  metering Resume Optimization when AI usage begins to cost.
+
+---
+
+## ADR-020: Multi-channel notifications behind a provider registry
+
+**Status:** Accepted
+**Date:** 2026-10-11
+
+### Context
+
+ADR-009 committed to push-only notifications (FCM via Expo), and the dispatch
+worker hard-coded a single Expo send path — adding any channel meant branching
+inside the worker. Two problems surfaced as matching went live:
+
+1. `runMatching` upserted matches and `.select()`ed the rows back, including
+   pre-existing ones, so every hourly cron re-enqueued pushes for matches it had
+   already notified. Nothing at the DB level prevented it.
+2. Candidates who disabled push, or never installed the app, had no
+   re-engagement path at all.
+
+### Decision
+
+- **Channels are data, not branches.** One provider contract
+  (`send({ to, notification }) → { messageId }`) in
+  `lib/notifications/providers/provider.js`; a registry
+  (`providers/index.js`) resolves the provider per `notification_queue.channel`.
+  The worker MUST NOT branch on vendor.
+- **`push` (Expo/FCM) remains the default channel; `whatsapp` is opt-in and OFF
+  by default** — a candidate must supply a valid E.164 number, and the channel
+  needs Meta Cloud API credentials before it activates.
+- **`notification_queue` becomes the delivery log**, not only a work queue:
+  `channel`, `type`, `match_score`, `resume_id`, `provider_message_id`, and an
+  extended `status` (`pending → processing → sent | failed | skipped`).
+- **Idempotency is enforced in the database.** `UNIQUE (user_id, job_id, channel)`
+  is the concurrency-safe final guard; the enqueue path upserts with
+  `ignoreDuplicates` and only enqueues newly-created matches.
+- **Eligibility is decided at enqueue time** (opt-in, valid E.164, per-channel
+  threshold, duplicate, rolling-24h cap) and **re-checked at send time**
+  (opt-out, quiet hours).
+- **A missing provider defers, it does not fail.** Rows for an unconfigured
+  channel stay `pending`, so provisioning WhatsApp later drains the backlog.
+
+### Alternatives considered
+
+| Alternative | Why rejected |
+|-------------|--------------|
+| Branch on channel inside the dispatch worker | Every new channel edits the worker; untestable without a live vendor |
+| Separate worker or queue table per channel | Duplicates lifecycle, retry, and dedup logic per channel |
+| WhatsApp as an always-on default channel | Messaging cost + PII; business-initiated messages need an approved template, so silent activation is unsafe |
+| Application-level dedup only | Races between concurrent worker runs re-notify users |
+| Fail rows when credentials are absent | Marks an entire channel permanently failed before it can be provisioned |
+
+### Trade-offs
+
+| Pros | Cons |
+|------|------|
+| Add a channel without touching the worker | One more indirection when debugging |
+| Dedup, retry, and backoff shared by all channels | Provider quirks (templates, window rules) leak into each provider |
+| A dormant channel is activated by config alone | Rows accumulate as `pending` until credentials exist |
+| Providers are mockable, so dispatch is unit-testable | The DB-level guarantees have no integration test in this repo |
+
+### Consequences
+
+- `lib/notifications/` gains `config.js`, `phone.js`, `eligibility.js`,
+  `enqueue.js`, and `providers/`; `dispatch.js` is rewritten around the channel
+  lifecycle.
+- Migration `20261110090000_whatsapp_notifications.sql` adds the preference
+  columns, the queue columns, the `status` CHECK, the unique index, and RLS.
+- WhatsApp configuration lives in env (`WHATSAPP_*`) — see
+  [notifications.md](./notifications.md) and `.env.example`.
+- Docs MUST NOT describe the fan-out as "FCM *or* OneSignal"; that was a
+  push-only concern.
+
+### Future considerations
+
+- Email (Resend/SendGrid) and an in-app inbox plug into the same registry.
+- WhatsApp quick-reply buttons ("Save job" / "Not interested") turn the channel
+  into a matching feedback signal.
+- Quiet hours are currently evaluated in **UTC**; per-user timezone is a
+  follow-up.
+
+---
+
 ## ADR-XXX: Title
 
 **Status:** Proposed

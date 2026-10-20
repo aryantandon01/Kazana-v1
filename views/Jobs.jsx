@@ -11,6 +11,7 @@ import Alert from '@/components/Alert';
 import EmptyState from '@/components/EmptyState';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import PageHeader from '@/components/PageHeader';
+import Pagination from '@/components/Pagination';
 import FilterPanel, { FilterField } from '@/components/FilterPanel';
 import JobCard from '@/components/JobCard';
 import { CAREER_AREAS } from '@/constants/careerAreas';
@@ -523,20 +524,12 @@ export default function Jobs() {
             </div>
           )}
 
-          {totalPages > 1 && (
-            <nav
-              aria-label="Jobs pagination"
-              style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                alignItems: 'center',
-                gap: 'var(--spacing-xs)',
-                marginTop: 'var(--spacing-2xl)',
-              }}
-            >
-              {renderPagination(currentPage, totalPages, setCurrentPage)}
-            </nav>
-          )}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onChange={setCurrentPage}
+            label="Jobs pagination"
+          />
         </div>
       </div>
 
@@ -580,71 +573,3 @@ const yearsInputStyle = {
   color: 'var(--text-primary)',
 };
 
-function renderPagination(currentPage, totalPages, setCurrentPage) {
-  const btn = (active) => ({
-    minWidth: '32px',
-    height: '32px',
-    padding: '0 8px',
-    border: '1px solid var(--border-color)',
-    borderRadius: 'var(--border-radius-sm)',
-    backgroundColor: active ? 'var(--color-primary)' : 'var(--bg-primary)',
-    color: active ? 'var(--text-inverse)' : 'var(--text-primary)',
-    cursor: 'pointer',
-    fontSize: 'var(--font-size-xs)',
-    fontFamily: 'inherit',
-  });
-
-  const getWindow = () => {
-    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    if (currentPage <= 3) return [1, 2, 3, 4, 5];
-    if (currentPage >= totalPages - 2) {
-      return [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
-    }
-    return [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2];
-  };
-
-  const pages = getWindow();
-  const showLast = totalPages > 5 && pages[pages.length - 1] < totalPages;
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-        disabled={currentPage === 1}
-        aria-label="Previous page"
-        style={{ ...btn(false), opacity: currentPage === 1 ? 0.45 : 1 }}
-      >
-        Prev
-      </button>
-      {pages.map((page) => (
-        <button
-          key={page}
-          type="button"
-          onClick={() => setCurrentPage(page)}
-          aria-current={currentPage === page ? 'page' : undefined}
-          style={btn(currentPage === page)}
-        >
-          {page}
-        </button>
-      ))}
-      {showLast && (
-        <>
-          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>…</span>
-          <button type="button" onClick={() => setCurrentPage(totalPages)} style={btn(currentPage === totalPages)}>
-            Last
-          </button>
-        </>
-      )}
-      <button
-        type="button"
-        onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-        disabled={currentPage === totalPages}
-        aria-label="Next page"
-        style={{ ...btn(false), opacity: currentPage === totalPages ? 0.45 : 1 }}
-      >
-        Next
-      </button>
-    </>
-  );
-}

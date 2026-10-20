@@ -6,13 +6,14 @@ import {
   computeReportConfidence,
   hashEmailEvidence,
 } from '@/lib/assessment/reportConfidence';
+import { classifyEvidence, earnsEvidenceBonus } from '@/lib/assessment/evidenceValidation';
+import { REPORT_LEVELS } from '@/constants/reportLevels';
 
-const STAGES = ['phone_screen', 'technical', 'system_design', 'behavioral', 'onsite', 'final'];
 const OUTCOMES = ['offer', 'advance', 'reject', 'no_response'];
 
 /**
  * POST /api/reports — submit an interview experience report.
- * Body: { company, roleKey?, roleLabel, stage, questionsAsked[], topics[], difficulty?, outcome?, interviewDate?, reportText?, emailEvidence? }
+ * Body: { company, roleKey?, roleLabel, level?, country?, questionsAsked[], topics[], difficulty?, outcome?, interviewDate?, reportText?, emailEvidence? }
  */
 export async function POST(request) {
   const { user, supabase, error: authError } = await requireAuth();
@@ -22,7 +23,6 @@ export async function POST(request) {
     const body = await request.json().catch(() => ({}));
     const company = String(body.company || '').trim();
     const roleLabel = String(body.roleLabel || '').trim();
-    const stage = String(body.stage || '').trim();
     const roleKey = body.roleKey ? String(body.roleKey).trim() : null;
     const questionsAsked = Array.isArray(body.questionsAsked)
       ? body.questionsAsked.map((q) => String(q).trim()).filter(Boolean).slice(0, 20)
@@ -32,6 +32,8 @@ export async function POST(request) {
       : [];
     const difficulty = body.difficulty != null ? Number(body.difficulty) : null;
     const outcome = body.outcome ? String(body.outcome) : null;
+    const level = body.level ? String(body.level).trim() : null;
+    const country = body.country ? String(body.country).trim() : null;
     const interviewDate = body.interviewDate ? String(body.interviewDate) : null;
     const reportText = body.reportText ? String(body.reportText) : '';
     const emailEvidence = body.emailEvidence ? String(body.emailEvidence) : '';
@@ -39,25 +41,26 @@ export async function POST(request) {
     if (!company || !roleLabel) {
       return validationError('company and roleLabel are required');
     }
-    if (!STAGES.includes(stage)) {
-      return validationError(`stage must be one of: ${STAGES.join(', ')}`);
-    }
     if (difficulty != null && (Number.isNaN(difficulty) || difficulty < 1 || difficulty > 5)) {
       return validationError('difficulty must be between 1 and 5');
     }
     if (outcome && !OUTCOMES.includes(outcome)) {
       return validationError(`outcome must be one of: ${OUTCOMES.join(', ')}`);
     }
+    if (level && !REPORT_LEVELS.includes(level)) {
+      return validationError(`level must be one of: ${REPORT_LEVELS.join(', ')}`);
+    }
 
-    // Confidence signals
-    const hasEmailEvidence = Boolean(emailEvidence.trim());
+    // Confidence signals — structural classification only. Plausible evidence
+    // is evidence-SHAPED; it is not proof of authenticity (see evidenceValidation.js).
+    const evidence = classifyEvidence(emailEvidence);
+    const hasPlausibleEvidence = earnsEvidenceBonus(evidence);
 
-    // Corroborating reports: same company + role (if provided) + stage
+    // Corroborating reports: same company + role (if provided)
     let corroboratingQuery = supabase
       .from('interview_reports')
       .select('id', { count: 'exact', head: true })
-      .eq('company', company)
-      .eq('stage', stage);
+      .eq('company', company);
     if (roleKey) corroboratingQuery = corroboratingQuery.eq('role_key', roleKey);
     const { count: corroboratingCount } = await corroboratingQuery;
 
@@ -69,7 +72,8 @@ export async function POST(request) {
 
     const confidence = await computeReportConfidence({
       supabase,
-      hasEmailEvidence,
+      evidenceStatus: evidence.status,
+      evidenceKind: evidence.kind,
       corroboratingCount: corroboratingCount || 0,
       contributorReportCount: priorCount || 0,
       interviewDate,
@@ -85,14 +89,17 @@ export async function POST(request) {
         company,
         role_key: roleKey,
         role_label: roleLabel,
-        stage,
+        level,
+        country,
         questions_asked: questionsAsked,
         topics,
         difficulty: difficulty != null && Number.isFinite(difficulty) ? difficulty : null,
         outcome: outcome || null,
         interview_date: interviewDate,
         report_text: reportText || null,
-        email_evidence_hashed: hasEmailEvidence ? hashEmailEvidence(emailEvidence) : null,
+        // Only hash evidence that is actually evidence-shaped, so junk input
+        // is never persisted as an evidence fingerprint.
+        email_evidence_hashed: hasPlausibleEvidence ? hashEmailEvidence(evidence.value) : null,
         status: 'published',
         confidence,
       })
@@ -110,7 +117,7 @@ export async function POST(request) {
 
 /**
  * GET /api/reports — browse published interview reports.
- * Query: company, role, stage, q, page, limit, sort=recent|confidence
+ * Query: company, role, level, country, q, page, limit, sort=recent|confidence
  */
 export async function GET(request) {
   const ip = getClientIp(request);
@@ -131,25 +138,45 @@ export async function GET(request) {
     const sort = searchParams.get('sort') === 'confidence' ? 'confidence' : 'recent';
     const company = searchParams.get('company');
     const role = searchParams.get('role');
-    const stage = searchParams.get('stage');
+    const level = searchParams.get('level');
+    const country = searchParams.get('country');
     const q = searchParams.get('q');
 
     let query = supabase
       .from('interview_reports')
       .select('*', { count: 'exact' })
       .eq('status', 'published')
-      .order(sort === 'confidence' ? 'confidence' : 'created_at', {
+      // Order by the extracted score, NOT the `confidence` JSONB column.
+      // Ordering the JSONB directly sorts structurally (by its `label`/`level`
+      // keys) rather than by score — which silently mis-ordered "Highest
+      // confidence". The extracted value compares correctly for scores in
+      // [0, 1) and matches the existing idx_reports_confidence index.
+      .order(sort === 'confidence' ? 'confidence->>score' : 'created_at', {
         ascending: sort !== 'confidence',
       });
 
-    if (company) query = query.eq('company', company);
-    if (stage) query = query.eq('stage', stage);
-    if (role) query = query.eq('role_key', role);
-    if (q) {
-      query = query.or(`company.ilike.%${q}%,role_label.ilike.%${q}%,report_text.ilike.%${q}%`);
-    }
+    query = applyReportFilters(query, { company, role, level, country, q });
 
     const { data, error, count } = await query.range(from, to);
+
+    // PostgREST answers a range whose offset runs past the end of the result set
+    // with PGRST103 instead of an empty page. Paging past the end is an ordinary
+    // client action (a stale page number after a filter narrows the results), so
+    // resolve the true total and return an empty page rather than a 500.
+    if (error?.code === 'PGRST103') {
+      const { count: fallbackTotal } = await applyReportFilters(
+        supabase
+          .from('interview_reports')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'published'),
+        { company, role, level, country, q },
+      );
+      return NextResponse.json({
+        data: [],
+        meta: { page, limit, total: fallbackTotal ?? 0, sort },
+      });
+    }
+
     if (error) throw error;
 
     // Strip private info (email_evidence_hashed) and shape for public view
@@ -158,7 +185,8 @@ export async function GET(request) {
       company: r.company,
       role_key: r.role_key,
       role_label: r.role_label,
-      stage: r.stage,
+      level: r.level,
+      country: r.country,
       questions_asked: r.questions_asked,
       topics: r.topics,
       difficulty: r.difficulty,
@@ -182,6 +210,19 @@ export async function GET(request) {
     console.error('GET /api/reports', err);
     return internalError();
   }
+}
+
+/** Shared filter chain so the ranged read and the fallback count cannot diverge. */
+function applyReportFilters(query, { company, role, level, country, q }) {
+  let next = query;
+  if (company) next = next.eq('company', company);
+  if (role) next = next.eq('role_key', role);
+  if (level) next = next.eq('level', level);
+  if (country) next = next.eq('country', country);
+  if (q) {
+    next = next.or(`company.ilike.%${q}%,role_label.ilike.%${q}%,report_text.ilike.%${q}%`);
+  }
+  return next;
 }
 
 // Lazy import to avoid coupling anon browse to SSR supabase server client

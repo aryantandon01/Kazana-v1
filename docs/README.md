@@ -8,7 +8,7 @@ This directory is the **single source of truth** for how Kazana is designed, bui
 
 ## What Kazana is (one paragraph)
 
-Kazana is an **AI Hiring Intelligence Platform**. The **assessment engine** is the product and the moat. Candidate products (Jobs, Resume Optimization, AI Interview Practice, Experience Sharing) create value and learning signals. Enterprise products monetize a *calibrated* engine and return workflow outcomes into the same learning system.
+Kazana is an **AI Hiring Intelligence Platform**. The **assessment engine** is the long-term product and moat. Phase 1 is the candidate platform (Jobs, Resume Optimization, Experience Sharing); **Resume Optimization is the current AI priority**. AI Interview Practice, the assessment-engine surface, and AI Credits monetization are **deferred to Phase 2**. Enterprise products monetize a *calibrated* engine and return workflow outcomes into the same learning system.
 
 We are **not** a job board, ATS, interview-question repo, recruiter CRM, or generic interview SaaS.
 
@@ -25,7 +25,6 @@ We are **not** a job board, ATS, interview-question repo, recruiter CRM, or gene
 | Frontend | [architecture.md](./architecture.md) → [frontend.md](./frontend.md) → [api.md](./api.md) |
 | Backend / platform | [architecture.md](./architecture.md) → [backend.md](./backend.md) → [database.md](./database.md) → [ingestion.md](./ingestion.md) |
 | Matching / jobs | [matching.md](./matching.md) → [ingestion.md](./ingestion.md) |
-| Credits / billing | [credits.md](./credits.md) → [decisions.md](./decisions.md) (ADR-018) |
 | AI coding assistants | [vision.md](./vision.md) → [architecture.md](./architecture.md) → [decisions.md](./decisions.md) → subsystem doc for the task |
 
 ---
@@ -44,7 +43,6 @@ docs/
 ├── database.md            ← Schema, RLS, migrations
 ├── ingestion.md           ← Job ETL / extraction
 ├── matching.md            ← Job–candidate matching
-├── credits.md             ← AI Credits & Entitlements
 ├── notifications.md       ← Push
 ├── api.md                 ← API contracts
 ├── deployment.md          ← Envs, CI/CD
@@ -68,7 +66,9 @@ Narrative docs (`vision`, `product`, `roadmap`, `architecture`) are intentionall
 | Resume Vault | Live | Early structured candidate signal |
 | Jobs + extraction + matching | Live | Acquisition surface + structured jobs |
 | Expo mobile | Present | Candidate reach |
-| AI Interview Practice / Experience Sharing | Next Phase 1 investments | Flagship assessment + calibration input |
+| Interview Experience Sharing | Live | Confidence-scored learning signal |
+| Resume Optimization | In progress | Current AI priority (Phase 1B) |
+| AI Interview Practice | Deferred (Phase 2) | Flagship assessment + calibration input |
 | Enterprise | Future | Phases 3–5 |
 
 Subsystem docs describe **target** behavior and call out gaps where code is still catching up.

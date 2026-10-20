@@ -30,6 +30,23 @@ export const canonicalJobSchema = z.object({
   responsibilities: z.array(z.string()).nullable().optional(),
 });
 
+/**
+ * One item in a batched extraction response — the canonical single-job shape
+ * plus the routing key echoed back by the model.
+ */
+export const batchExtractionItemSchema = canonicalJobSchema.extend({
+  // Models sometimes emit numeric ATS ids as JSON numbers — accept both.
+  external_id: z.union([z.string(), z.number()]),
+});
+
+/**
+ * Top-level shape of a batched extraction response:
+ * `{ "items": [{ "external_id": "...", ...canonical fields }] }`.
+ */
+export const batchExtractionResponseSchema = z.object({
+  items: z.array(batchExtractionItemSchema),
+});
+
 export const extractionResultSchema = z.object({
   value: z.any(),
   confidence: z.number().min(0).max(1),

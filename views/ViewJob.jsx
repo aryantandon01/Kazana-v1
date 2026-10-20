@@ -10,7 +10,7 @@ import Alert from '@/components/Alert';
 import Badge from '@/components/Badge';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import CompanyAvatar from '@/components/CompanyAvatar';
-import JobMeta, { buildJobMetaItems } from '@/components/JobMeta';
+import Meta, { buildJobMetaItems } from '@/components/Meta';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import { ChipGroup } from '@/components/Chip';
 import { getJobFreshnessDisplay } from '@/lib/jobs/freshness';
@@ -106,7 +106,7 @@ export default function ViewJob() {
             </div>
           )}
 
-          <JobMeta items={metaItems} />
+          <Meta items={metaItems} />
         </header>
 
         {careerAreas.length > 0 && (

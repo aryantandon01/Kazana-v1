@@ -129,13 +129,18 @@ ALTER TABLE resume_optimization_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE resume_suggestions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE generated_resume_exports ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "owner all versions" ON resume_versions;
 CREATE POLICY "owner all versions" ON resume_versions
   USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "owner all parsed data" ON resume_parsed_data;
 CREATE POLICY "owner all parsed data" ON resume_parsed_data
   USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "owner all optimization sessions" ON resume_optimization_sessions;
 CREATE POLICY "owner all optimization sessions" ON resume_optimization_sessions
   USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "owner all suggestions" ON resume_suggestions;
 CREATE POLICY "owner all suggestions" ON resume_suggestions
   USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "owner all exports" ON generated_resume_exports;
 CREATE POLICY "owner all exports" ON generated_resume_exports
   USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);

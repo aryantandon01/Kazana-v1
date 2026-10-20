@@ -3,13 +3,21 @@
  * Used by the rule-based classifier; AI enrichment can add more tags later.
  */
 
-/** @type {{ value: string, label: string, patterns: RegExp[] }[]} */
+/** @type {{ value: string, label: string, patterns: RegExp[], titleOnly?: boolean }[]} */
 export const CAREER_AREA_RULES = [
+  {
+    // Bare "AI" is a strong *title* signal ("AI Engineer") but appears in almost
+    // every JD body ("we use AI…"), so it must never decide the primary career
+    // area on its own. `titleOnly` keeps body noise out of job_family.
+    value: 'ai',
+    label: 'AI',
+    titleOnly: true,
+    patterns: [/\bai\b/i, /\bgenai\b/i, /\bgen ai\b/i, /\bai\/(?:ml|engineer)\b/i],
+  },
   {
     value: 'ai',
     label: 'AI',
     patterns: [
-      /\bai\b/i,
       /\bartificial intelligence\b/i,
       /\bgenerative ai\b/i,
       /\bllm\b/i,
@@ -42,6 +50,13 @@ export const CAREER_AREA_RULES = [
       /\bplatform engineer/i,
       /\bdistributed systems?\b/i,
       /\bmicroservices?\b/i,
+      // Generic engineering titles: without these they fall through to a
+      // body-only "AI" match and get mislabelled ai_engineer.
+      /\bsoftware engineer/i,
+      /\bsoftware developer/i,
+      /\bsoftware development engineer/i,
+      /\bapplication developer\b/i,
+      /\bprogrammer\b/i,
     ],
   },
   {
@@ -116,7 +131,13 @@ export const CAREER_AREA_RULES = [
   {
     value: 'product',
     label: 'Product',
-    patterns: [/\bproduct manager\b/i, /\bproduct owner\b/i, /\bpm\b/i],
+    patterns: [
+      /\bproduct manager\b/i,
+      /\bproduct management\b/i,
+      /\bproduct owner\b/i,
+      /\bproduct lead\b/i,
+      /\bpm\b/i,
+    ],
   },
   {
     value: 'design',
@@ -127,6 +148,9 @@ export const CAREER_AREA_RULES = [
       /\bui designer\b/i,
       /\bux researcher\b/i,
       /\bgraphic designer\b/i,
+      /\bdesigner\b/i,
+      /\bux\b/i,
+      /\bui\b/i,
     ],
   },
   {
@@ -137,27 +161,72 @@ export const CAREER_AREA_RULES = [
       /\bsales engineer\b/i,
       /\bbusiness development\b/i,
       /\brevenue\b/i,
+      /\bsolutions? engineer\b/i,
+      /\btechnical account manager\b/i,
+      /\bcustomer success\b/i,
+      /\bsales (?:manager|director|lead|development)\b/i,
+      /\baccount (?:director|manager)\b/i,
+      /\bpartner (?:manager|development|director)\b/i,
+      /\bpre-?sales\b/i,
     ],
   },
   {
     value: 'marketing',
     label: 'Marketing',
-    patterns: [/\bmarketing\b/i, /\bgrowth\b/i, /\bproduct marketing\b/i],
+    patterns: [
+      /\bmarketing\b/i,
+      /\bgrowth\b/i,
+      /\bproduct marketing\b/i,
+      /\bbrand\b/i,
+      /\bcontent\b/i,
+      /\bcommunications\b/i,
+      /\bpublic relations\b/i,
+      /\bseo\b/i,
+      /\bsocial media\b/i,
+      /\blifecycle\b/i,
+      /\bdemand gen/i,
+    ],
   },
   {
     value: 'finance',
     label: 'Finance',
-    patterns: [/\bfinancial analyst\b/i, /\binvestment banker\b/i, /\bfinance\b/i],
+    patterns: [
+      /\bfinancial analyst\b/i,
+      /\binvestment banker\b/i,
+      /\bfinance\b/i,
+      /\btreasury\b/i,
+      /\baccountant\b/i,
+      /\baccounts (?:payable|receivable)\b/i,
+      /\bpayroll\b/i,
+      /\b(?:financial|assistant|corporate|division) controller\b/i,
+    ],
   },
   {
     value: 'legal',
     label: 'Legal',
-    patterns: [/\blegal\b/i, /\bcompliance\b/i, /\bcounsel\b/i, /\battorney\b/i],
+    patterns: [
+      /\blegal\b/i,
+      /\bcompliance\b/i,
+      /\bcounsel\b/i,
+      /\battorney\b/i,
+      /\blawyer\b/i,
+      /\bparalegal\b/i,
+      /\bcontracts? manager\b/i,
+      /\bcompliance officer\b/i,
+    ],
   },
   {
     value: 'hr',
     label: 'HR',
-    patterns: [/\brecruiter\b/i, /\btalent acquisition\b/i, /\bpeople ops\b/i, /\bhr\b/i],
+    patterns: [
+      /\brecruiter\b/i,
+      /\brecruiting\b/i,
+      /\bsourcer\b/i,
+      /\btalent (?:acquisition|sourcing|partner)\b/i,
+      /\bpeople (?:ops|operations)\b/i,
+      /\bhuman resources\b/i,
+      /\bhr\b/i,
+    ],
   },
   {
     value: 'operations',
@@ -188,7 +257,11 @@ export const CAREER_AREA_RULES = [
       /\bhardware engineer/i,
       /\belectrical engineer/i,
       /\bmechanical engineer/i,
+      /\bmechanical design engineer/i,
+      /\bmanufacturing engineer/i,
       /\bfirmware\b/i,
+      /\basic\b/i,
+      /\bpcb\b/i,
     ],
   },
   {
@@ -305,6 +378,40 @@ export const TAG_LEXICON = [
   { name: 'Project Management', slug: 'project-management', category: 'soft_skill', patterns: [/\bproject management\b/i] },
 ];
 
+/**
+ * Canonical tag categories allowed by the `tags.tag_category` CHECK constraint
+ * (db/migrations/20260719090000_semantic_facets_tags.sql). Keep in sync.
+ */
+export const TAG_CATEGORIES = [
+  'programming_language',
+  'framework',
+  'cloud',
+  'ai',
+  'infrastructure',
+  'database',
+  'soft_skill',
+  'domain',
+  'tool',
+  'other',
+];
+
+/**
+ * Resolve a tag_category for a free-form skill/technology name.
+ *
+ * The rules engine only emits categories from TAG_LEXICON, but the LLM
+ * extraction path produces arbitrary strings. Normalize those into the same
+ * taxonomy and fall back to `other` so writes always satisfy the DB CHECK.
+ *
+ * @param {string|null|undefined} name
+ * @returns {string}
+ */
+export function resolveTagCategory(name) {
+  const value = String(name ?? '').trim();
+  if (!value) return 'other';
+  const match = TAG_LEXICON.find((entry) => entry.patterns.some((pattern) => pattern.test(value)));
+  return match ? match.category : 'other';
+}
+
 /** Map legacy L-levels / titles → experience_level facet values */
 export const LEGACY_LEVEL_TO_EXPERIENCE = {
   L1: 'intern',
@@ -318,7 +425,25 @@ export const LEGACY_LEVEL_TO_EXPERIENCE = {
   L9: 'director',
 };
 
-/** Primary career area used to keep legacy jobs.job_family roughly populated */
+/**
+ * Body text is noisy ("we use AI", "ensure compliance", "revenue growth"), so
+ * `job_family` is title-first. When the title says nothing, only these
+ * high-precision technical areas may be inferred from the body.
+ */
+export const BODY_SAFE_FAMILY_AREAS = new Set([
+  'machine_learning',
+  'backend',
+  'frontend',
+  'full_stack',
+  'devops',
+  'security',
+  'data',
+  'design',
+]);
+
+/**
+ * Primary career area used to keep legacy jobs.job_family roughly populated.
+ */
 export const CAREER_AREA_TO_LEGACY_FAMILY = {
   machine_learning: 'machine_learning_engineer',
   ai: 'ai_engineer',
@@ -334,6 +459,7 @@ export const CAREER_AREA_TO_LEGACY_FAMILY = {
   sales: 'account_executive',
   marketing: 'marketing',
   finance: 'financial_analyst',
+  legal: 'corporate_legal_associate',
   hr: 'recruiter',
   administration: null,
   operations: null,

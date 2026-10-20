@@ -124,7 +124,7 @@ Do NOT use for:
 | [database.md](./database.md) | Service role for workers; user JWT for API |
 | [ingestion.md](./ingestion.md) | Worker pulls from sources → writes `jobs` |
 | [matching.md](./matching.md) | Worker reads jobs + users → writes `matches` |
-| [notifications.md](./notifications.md) | Worker reads pending notifications → FCM |
+| [notifications.md](./notifications.md) | Worker reads pending notifications → per-channel provider (Expo push / WhatsApp) |
 | [frontend.md](./frontend.md) | Clients call API routes |
 
 ---

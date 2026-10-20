@@ -43,32 +43,63 @@ ${(job.description || '').slice(0, 12000)}
 
 /**
  * Build a batched extraction prompt — returns an array keyed by external_id.
- * ATS-native fields (title/company/location) are locked inputs.
+ * ATS-native fields (title/company/location + structured years/employment/
+ * arrangement/salary) are locked inputs the model must copy verbatim.
  *
- * @param {Array<{ title: string, company?: string|null, location?: string|null, description?: string|null }>} jobs
+ * @param {Array<{
+ *   externalId: string,
+ *   title: string,
+ *   company?: string|null,
+ *   location?: string|null,
+ *   description?: string|null,
+ *   yearsRequired?: number|string|null,
+ *   employmentType?: string|null,
+ *   workArrangement?: string|null,
+ *   salary?: object|string|null,
+ *   tags?: string[],
+ * }>} jobs
  */
 export function buildBatchExtractionPrompt(jobs) {
   const items = jobs
-    .map(
-      (job, i) => `### JOB ${i + 1} (external_id: "job_${i + 1}")
+    .map((job, i) => {
+      const locked = [
+        ['years required', job.yearsRequired],
+        ['employment type', job.employmentType],
+        ['work arrangement', job.workArrangement],
+        ['salary', job.salary],
+      ]
+        .map(([label, value]) => {
+          const text = formatLockedValue(value);
+          return text == null ? null : `ATS locked — ${label}: ${text}`;
+        })
+        .filter(Boolean)
+        .join('\n');
+
+      const tags = Array.isArray(job.tags) && job.tags.length
+        ? `ATS tags: ${job.tags.map((t) => String(t)).join(', ')}`
+        : '';
+
+      return `### JOB ${i + 1} (external_id: "${job.externalId}")
 Title: ${job.title || ''}
 Company: ${job.company || ''}
-Location: ${job.location || ''}
+Location: ${job.location || ''}${locked ? `\n${locked}` : ''}${tags ? `\n${tags}` : ''}
 Description:
-${(job.description || '').slice(0, 6000)}`,
-    )
+${(job.description || '').slice(0, 6000)}`;
+    })
     .join('\n\n');
 
   return `You are an information extraction engine, not a chatbot.
 Extract EACH job posting into JSON matching the schema below.
 For each job return one object. When a field is not explicitly stated, ESTIMATE the most likely value from the role's title, experience level, company, and description (e.g. years required from a "Senior" prefix, employment type from context, likely technologies implied by the stack). Use your best judgment rather than returning null.
 The "title", "company", and "location" fields are LOCKED — copy them verbatim from the input, do not modify.
+Any line marked "ATS locked" is authoritative structured data — copy that exact value into the corresponding field; do not change it or infer a different one.
+Each item MUST include "external_id" copied verbatim from that job's header (as a string).
 Return a single JSON object in this exact shape (no markdown, no prose):
 
 {
   "items": [
     {
-      "external_id": "job_1",
+      "external_id": "<copy the exact external_id from the job header>",
       "employmentType": "full_time"|"part_time"|"contract"|"internship"|"temporary"|null,
       "workArrangement": "remote"|"hybrid"|"onsite"|null,
       "minimumExperience": number 0-40 or null,
@@ -89,4 +120,20 @@ Jobs to extract (${jobs.length} total):
 
 ${items}
 `;
+}
+
+/**
+ * Render an ATS structured value for the locked-input line.
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+function formatLockedValue(value) {
+  if (value == null) return null;
+  if (typeof value === 'string') return value.trim() || null;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }

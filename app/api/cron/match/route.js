@@ -15,7 +15,10 @@ export async function POST(request) {
     const result = await runMatching({ sinceHours: 48 });
     return NextResponse.json({ data: result });
   } catch (err) {
-    console.error('POST /api/cron/match', err);
+    console.error('/api/cron/match', err);
     return internalError();
   }
 }
+
+// Vercel Cron invokes the path with GET and attaches CRON_SECRET as a bearer token.
+export const GET = POST;

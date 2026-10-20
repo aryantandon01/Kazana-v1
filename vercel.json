@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/credits",
-      "schedule": "30 * * * *"
+      "schedule": "15 * * * *"
     }
   ]
 }

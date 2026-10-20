@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
@@ -13,15 +13,7 @@ import Input from '@/components/Input';
 import Loading from '@/components/Loading';
 import PageHeader from '@/components/PageHeader';
 import { JOB_FAMILY_GROUPS, getJobFamilyByValue } from '@/constants/jobFamilies';
-
-const STAGE_OPTIONS = [
-  { value: 'phone_screen', label: 'Phone Screen' },
-  { value: 'technical', label: 'Technical Interview' },
-  { value: 'system_design', label: 'System Design' },
-  { value: 'behavioral', label: 'Behavioral Interview' },
-  { value: 'onsite', label: 'Onsite' },
-  { value: 'final', label: 'Final Round' },
-];
+import { REPORT_LEVEL_OPTIONS } from '@/constants/reportLevels';
 
 const OUTCOME_OPTIONS = [
   { value: 'offer', label: 'Offer received' },
@@ -64,7 +56,8 @@ export default function ShareExperience() {
   const router = useRouter();
   const [company, setCompany] = useState(null);
   const [role, setRole] = useState(null);
-  const [stage, setStage] = useState(null);
+  const [level, setLevel] = useState(null);
+  const [country, setCountry] = useState(null);
   const [questionsText, setQuestionsText] = useState('');
   const [topics, setTopics] = useState([]);
   const [difficulty, setDifficulty] = useState(null);
@@ -74,11 +67,40 @@ export default function ShareExperience() {
   const [emailEvidence, setEmailEvidence] = useState('');
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  // Sourced from `confidence_rules` so the explainer never quotes a stale
+  // hardcoded percentage.
+  const [baseConfidencePct, setBaseConfidencePct] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/reports/confidence-rules')
+      .then(({ data }) => {
+        if (!cancelled && typeof data?.base_confidence === 'number') {
+          setBaseConfidencePct(Math.round(data.base_confidence * 100));
+        }
+      })
+      .catch(() => {
+        /* Explainer must never block the form. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadCompanies = useCallback(async (inputValue) => {
     try {
       const q = inputValue ? `?q=${encodeURIComponent(inputValue)}` : '';
       const { data } = await apiFetch(`/api/lookups/companies${q}`);
+      return (data || []).map((c) => ({ value: c.name, label: c.name }));
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const loadCountries = useCallback(async (inputValue) => {
+    try {
+      const q = inputValue ? `?q=${encodeURIComponent(inputValue)}` : '';
+      const { data } = await apiFetch(`/api/lookups/countries${q}`);
       return (data || []).map((c) => ({ value: c.name, label: c.name }));
     } catch {
       return [];
@@ -91,8 +113,8 @@ export default function ShareExperience() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!company || !role || !stage) {
-      setError('Company, role, and stage are required.');
+    if (!company || !role) {
+      setError('Company and role are required.');
       return;
     }
 
@@ -111,7 +133,8 @@ export default function ShareExperience() {
           company: company.value,
           roleKey: role.value,
           roleLabel: role.label,
-          stage: stage.value,
+          level: level?.value || null,
+          country: country?.value || null,
           questionsAsked,
           topics: topics.map((t) => t.value),
           difficulty: difficulty?.value || null,
@@ -131,8 +154,8 @@ export default function ShareExperience() {
   return (
     <div className="container" style={{ paddingTop: 'var(--spacing-3xl)', paddingBottom: 'var(--spacing-3xl)', maxWidth: 'var(--container-md)' }}>
       <PageHeader
-        title="Share Interview Experience"
-        description="Contribute to the ground truth that calibrates Kazana's assessments. Reports are confidence-scored — never treated as absolute truth."
+        title="Share what your interview was actually like"
+        description="Help build Kazana's interview knowledge base. Reports are confidence-scored and never treated as absolute truth."
       />
 
       {error && <Alert variant="error" style={{ marginBottom: 'var(--spacing-xl)' }}>{error}</Alert>}
@@ -170,27 +193,29 @@ export default function ShareExperience() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)', marginBottom: 'var(--spacing-lg)' }}>
             <div>
-              <label style={labelStyle}>Stage *</label>
+              <label style={labelStyle}>Level</label>
               <Select
-                instanceId="share-stage"
-                options={STAGE_OPTIONS}
-                value={stage}
-                onChange={setStage}
-                placeholder="Select stage"
+                instanceId="share-level"
+                options={REPORT_LEVEL_OPTIONS}
+                value={level}
+                onChange={setLevel}
+                placeholder="Select level"
                 styles={selectStyles}
                 isSearchable={false}
               />
             </div>
             <div>
-              <label style={labelStyle}>Difficulty</label>
-              <Select
-                instanceId="share-difficulty"
-                options={DIFFICULTY_OPTIONS}
-                value={difficulty}
-                onChange={setDifficulty}
-                placeholder="Select difficulty"
+              <label style={labelStyle}>Country</label>
+              <AsyncSelect
+                instanceId="share-country"
+                cacheOptions
+                defaultOptions
+                loadOptions={loadCountries}
+                value={country}
+                onChange={setCountry}
+                placeholder="Search countries..."
                 styles={selectStyles}
-                isSearchable={false}
+                isSearchable
               />
             </div>
           </div>
@@ -209,9 +234,22 @@ export default function ShareExperience() {
               />
             </div>
             <div>
-              <label style={labelStyle}>Interview date</label>
-              <Input type="date" value={interviewDate} onChange={(e) => setInterviewDate(e.target.value)} />
+              <label style={labelStyle}>Difficulty</label>
+              <Select
+                instanceId="share-difficulty"
+                options={DIFFICULTY_OPTIONS}
+                value={difficulty}
+                onChange={setDifficulty}
+                placeholder="Select difficulty"
+                styles={selectStyles}
+                isSearchable={false}
+              />
             </div>
+          </div>
+
+          <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+            <label style={labelStyle}>Interview date</label>
+            <Input type="date" value={interviewDate} onChange={(e) => setInterviewDate(e.target.value)} />
           </div>
 
           <div style={{ marginBottom: 'var(--spacing-lg)' }}>
@@ -259,7 +297,8 @@ export default function ShareExperience() {
               placeholder="Paste the interview invitation or outcome email subject/content"
             />
             <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: 'var(--spacing-xs)' }}>
-              Only a hash is stored — never the email itself. Providing evidence raises your report's confidence score.
+              Only a hash is stored — never the email itself. Enter a full email address or the complete subject line;
+              short or unrecognisable text is ignored. Evidence raises confidence — it is not proof of authenticity.
             </p>
           </div>
 
@@ -274,7 +313,10 @@ export default function ShareExperience() {
           How confidence works
         </h3>
         <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 0, lineHeight: 'var(--line-height-normal)' }}>
-          Your report starts at 40% confidence and rises with email evidence, corroborating reports for the same company and role, contributor reputation, timeline consistency, and level of detail. Reports are inputs to a learning system — never labeled "verified".
+          {baseConfidencePct != null
+            ? `Your report starts at ${baseConfidencePct}% confidence and can increase with email evidence, corroborating reports for the same company and role, contributor reputation, timeline consistency, and level of detail.`
+            : 'Your report starts at a base level of confidence and can increase with email evidence, corroborating reports for the same company and role, contributor reputation, timeline consistency, and level of detail.'}{' '}
+          Reports are inputs to Kazana&apos;s interview knowledge base — they are never labeled &quot;verified&quot;.
         </p>
       </Card>
     </div>

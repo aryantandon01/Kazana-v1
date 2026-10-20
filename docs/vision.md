@@ -92,11 +92,13 @@ Jobs
   → More Users
 ```
 
+Phase 1 currently covers Jobs → Resume Optimization → Experience Submission; AI Interview Practice enters the wheel in Phase 2.
+
 | Stage | Role |
 |-------|------|
 | Jobs | Acquisition and retention—not differentiation |
 | Resume Optimization | Interview readiness; structured candidate signal |
-| AI Interview Practice | Flagship B2C experience; primary assessment surface |
+| AI Interview Practice | Flagship B2C experience; primary assessment surface (Phase 2) |
 | Real Interview | Ground truth opportunity |
 | Interview Experience Submission | Probabilistic learning signal (confidence-scored) |
 | Assessment Improvement | Moat compounding |
@@ -113,7 +115,7 @@ It should eventually understand:
 
 - how companies evaluate candidates
 - which competencies matter where
-- how interviews differ by company, role, and stage
+- how interviews differ by company and role
 - what predicts success
 
 **Goal:** model hiring behavior—not memorize interview questions.
@@ -185,8 +187,8 @@ We are not building AI for novelty.
 
 | Phase | Focus | Purpose |
 |-------|-------|---------|
-| **1** Candidate Platform | Jobs, Resume Optimization, AI Interview Practice, Interview Experience Sharing | Acquire users; generate value; collect learning signals |
-| **2** Assessment Calibration | Outcomes, advancement, offers, rejections, feedback | Validate that Kazana assessments correlate with real hiring success |
+| **1** Candidate Platform | Jobs, Resume Optimization, Interview Experience Sharing | Acquire users; generate value; collect learning signals (**current focus**) |
+| **2** AI Interview Practice & Assessment Calibration | Practice surface + outcomes, advancement, offers, rejections, feedback | Surface the flagship assessment experience; validate that assessments correlate with real hiring success |
 | **3** Enterprise Entry | AI First-Round Screening | Monetize a *calibrated* engine—not generic AI |
 | **4** Workflow Integration | Copilot, notes, scorecards, recruiter assistance, analytics | Workflow data as another learning signal |
 | **5** Hiring Intelligence | Recommendations for interviews, decisions, interviewer calibration, process | AI decision-support layer |

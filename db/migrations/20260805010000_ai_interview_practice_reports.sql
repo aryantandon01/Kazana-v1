@@ -119,15 +119,18 @@ ALTER TABLE practice_questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE interview_reports ENABLE ROW LEVEL SECURITY;
 
 -- Rubrics: public read (needed to generate sessions)
+DROP POLICY IF EXISTS "public read practice rubrics" ON practice_rubrics;
 CREATE POLICY "public read practice rubrics" ON practice_rubrics
   FOR SELECT USING (true);
 
 -- Sessions: owner-only full access
+DROP POLICY IF EXISTS "owner all sessions" ON practice_sessions;
 CREATE POLICY "owner all sessions" ON practice_sessions
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
 -- Questions: owner-only via session
+DROP POLICY IF EXISTS "owner all questions" ON practice_questions;
 CREATE POLICY "owner all questions" ON practice_questions
   USING (
     EXISTS (
@@ -143,15 +146,19 @@ CREATE POLICY "owner all questions" ON practice_questions
   );
 
 -- Reports: anyone can read published; owner can insert/update/delete own
+DROP POLICY IF EXISTS "public read published reports" ON interview_reports;
 CREATE POLICY "public read published reports" ON interview_reports
   FOR SELECT USING (status = 'published');
 
+DROP POLICY IF EXISTS "owner insert reports" ON interview_reports;
 CREATE POLICY "owner insert reports" ON interview_reports
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "owner update own reports" ON interview_reports;
 CREATE POLICY "owner update own reports" ON interview_reports
   FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "owner delete own reports" ON interview_reports;
 CREATE POLICY "owner delete own reports" ON interview_reports
   FOR DELETE USING (auth.uid() = user_id);
 

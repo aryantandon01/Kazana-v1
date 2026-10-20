@@ -1,6 +1,7 @@
 import {
   CAREER_AREA_RULES,
   CAREER_AREA_TO_LEGACY_FAMILY,
+  BODY_SAFE_FAMILY_AREAS,
   EMPLOYMENT_TYPE_RULES,
   EXPERIENCE_LEVEL_RULES,
   LEGACY_LEVEL_TO_EXPERIENCE,
@@ -27,7 +28,7 @@ export function classifyJob(job) {
   const employerTags = extractEmployerTags(haystack);
   const aiTags = inferAiTags(haystack, careerAreas, employerTags);
 
-  const primaryCareer = careerAreas[0]?.facet_value;
+  const primaryCareer = primaryCareerArea(careerAreas, title);
   const primaryExperience = experienceLevels[0]?.facet_value;
   const mappedFamily =
     primaryCareer && Object.prototype.hasOwnProperty.call(CAREER_AREA_TO_LEGACY_FAMILY, primaryCareer)
@@ -97,7 +98,8 @@ function matchAll(rules, haystack, title) {
   const hits = [];
   for (const rule of rules) {
     const inTitle = rule.patterns.some((p) => p.test(title));
-    const inBody = rule.patterns.some((p) => p.test(haystack));
+    // `titleOnly` rules (bare "AI") are too broad for bodies/haystacks.
+    const inBody = rule.titleOnly ? false : rule.patterns.some((p) => p.test(haystack));
     if (inTitle || inBody) {
       hits.push({
         facet_type: 'career_area',
@@ -111,6 +113,24 @@ function matchAll(rules, haystack, title) {
   }
   hits.sort((a, b) => Number(b._title) - Number(a._title) || b.confidence - a.confidence);
   return dedupeByValue(hits).map(({ _title, ...rest }) => rest);
+}
+
+/**
+ * Primary career area = first concrete title match (non-AI), else an AI title
+ * match, else a high-precision technical body signal. Body words like "AI",
+ * "compliance", "revenue" and "growth" never decide the family.
+ */
+function primaryCareerArea(areas, title) {
+  const titleHits = areas.filter((area) => {
+    const rule = CAREER_AREA_RULES.find((r) => r.value === area.facet_value);
+    return rule?.patterns.some((p) => p.test(title));
+  });
+  const titleHit = titleHits.find((area) => area.facet_value !== 'ai') || titleHits[0];
+  const primary =
+    titleHit ||
+    areas.find((area) => BODY_SAFE_FAMILY_AREAS.has(area.facet_value)) ||
+    null;
+  return primary?.facet_value;
 }
 
 function matchExperience(haystack, title, legacyLevel) {

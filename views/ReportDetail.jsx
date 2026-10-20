@@ -1,24 +1,23 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import Card from '@/components/Card';
 import Alert from '@/components/Alert';
+import Button from '@/components/Button';
 import Loading from '@/components/Loading';
-import PageHeader from '@/components/PageHeader';
-
-const STAGE_LABELS = {
-  phone_screen: 'Phone Screen',
-  technical: 'Technical Interview',
-  system_design: 'System Design',
-  behavioral: 'Behavioral Interview',
-  onsite: 'Onsite',
-  final: 'Final Round',
-};
+import Breadcrumbs from '@/components/Breadcrumbs';
+import CompanyAvatar from '@/components/CompanyAvatar';
+import ConfidenceBadge from '@/components/ConfidenceBadge';
+import Meta from '@/components/Meta';
+import SectionHeader from '@/components/SectionHeader';
+import { ChipGroup } from '@/components/Chip';
+import { buildReportMetaItems, formatReportDate, formatSignal } from '@/lib/reports/presentation';
 
 export default function ReportDetail() {
   const { id } = useParams();
+  const router = useRouter();
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -41,97 +40,114 @@ export default function ReportDetail() {
   }
 
   const confidence = report.confidence || {};
-  const levelLabel =
-    confidence.level === 'high'
-      ? 'High confidence'
-      : confidence.level === 'medium'
-        ? 'Medium confidence'
-        : 'Low confidence';
+  const topics = Array.isArray(report.topics) ? report.topics : [];
+  const questions = Array.isArray(report.questions_asked) ? report.questions_asked : [];
+  const metaItems = buildReportMetaItems(report);
+  const dateLabel = formatReportDate(report.interview_date || report.created_at);
 
   return (
     <div className="container" style={{ paddingTop: 'var(--spacing-3xl)', paddingBottom: 'var(--spacing-3xl)', maxWidth: 'var(--container-md)' }}>
-      <PageHeader
-        title={`${report.company} · ${report.role_label}`}
-        description={STAGE_LABELS[report.stage] || report.stage}
+      <Breadcrumbs
+        items={[
+          { label: 'Experiences', to: '/reports' },
+          { label: report.role_label || report.company },
+        ]}
       />
 
-      {/* Confidence badge */}
-      <Card style={{ padding: 'var(--spacing-lg)', marginBottom: 'var(--spacing-xl)', display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', flexWrap: 'wrap' }}>
-        <span
-          style={{
-            fontSize: 'var(--font-size-sm)',
-            fontWeight: 'var(--font-weight-semibold)',
-            color: confidence.level === 'high' ? 'var(--color-success)' : confidence.level === 'medium' ? 'var(--color-warning)' : 'var(--text-muted)',
-            backgroundColor: confidence.level === 'high' ? 'var(--color-success-muted)' : confidence.level === 'medium' ? 'var(--color-warning-muted)' : 'var(--bg-tertiary)',
-            padding: '6px 12px',
-            borderRadius: 'var(--border-radius-full)',
-          }}
-        >
-          {levelLabel} · {Math.round((confidence.score || 0) * 100)}%
-        </span>
-        {confidence.signals?.length > 0 && (
-          <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>
-            Signals: {confidence.signals.join(', ')}
-          </span>
+      <Card padding="xl">
+        <header style={{ marginBottom: 'var(--spacing-xl)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)' }}>
+            <CompanyAvatar name={report.company} size={44} />
+            <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {report.company}
+            </p>
+          </div>
+
+          <h1 style={{ margin: 0, marginBottom: 'var(--spacing-md)', fontSize: 'var(--font-size-3xl)', letterSpacing: 'var(--letter-spacing-tight)' }}>
+            {report.role_label || 'Interview experience'}
+          </h1>
+
+          {/* Confidence is evidence-based, not a truth claim — make that explicit. */}
+          <ConfidenceBadge
+            confidence={confidence}
+            tooltip="Confidence reflects the evidence available to Kazana for this report. It does not mean every detail has been independently verified."
+          >
+            {dateLabel && (
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                {dateLabel}
+              </span>
+            )}
+          </ConfidenceBadge>
+
+          {confidence.signals?.length > 0 && (
+            <p className="text-caption" style={{ margin: 'var(--spacing-sm) 0 0', color: 'var(--text-muted)' }}>
+              Signals: {confidence.signals.map(formatSignal).join(', ')}
+            </p>
+          )}
+
+          <Meta items={metaItems} />
+        </header>
+
+        {topics.length > 0 && (
+          <div style={{ marginBottom: 'var(--spacing-xl)' }}>
+            <ChipGroup items={topics} max={8} tone="tech" />
+          </div>
         )}
-        <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-          {formatDate(report.interview_date || report.created_at)}
-        </span>
+
+        {questions.length > 0 && (
+          <section style={{ marginBottom: 'var(--spacing-xl)' }}>
+            <SectionHeader title="Questions asked" />
+            <ol style={{ margin: 0, paddingLeft: 'var(--spacing-lg)' }}>
+              {questions.map((q, i) => (
+                <li key={i} style={{ fontSize: 'var(--font-size-base)', marginBottom: 'var(--spacing-sm)', lineHeight: 'var(--line-height-normal)' }}>
+                  {q}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        {report.report_text && (
+          <section>
+            <SectionHeader title="The experience" />
+            <p style={{ fontSize: 'var(--font-size-base)', lineHeight: 'var(--line-height-relaxed)', whiteSpace: 'pre-wrap', margin: 0 }}>
+              {report.report_text}
+            </p>
+          </section>
+        )}
       </Card>
 
-      {/* Meta */}
-      <div style={{ display: 'flex', gap: 'var(--spacing-lg)', marginBottom: 'var(--spacing-xl)', flexWrap: 'wrap' }}>
-        {report.difficulty != null && (
-          <span style={metaStyle}>Difficulty: {report.difficulty}/5</span>
-        )}
-        {report.outcome && (
-          <span style={metaStyle}>Outcome: {formatOutcome(report.outcome)}</span>
-        )}
-        {report.topics?.length > 0 && (
-          <span style={metaStyle}>Topics: {report.topics.join(', ')}</span>
-        )}
-      </div>
-
-      {/* Questions */}
-      {report.questions_asked?.length > 0 && (
-        <Card style={{ padding: 'var(--spacing-xl)', marginBottom: 'var(--spacing-xl)' }}>
-          <h2 style={{ fontSize: 'var(--font-size-lg)', marginBottom: 'var(--spacing-md)' }}>Questions asked</h2>
-          <ol style={{ margin: 0, paddingLeft: 'var(--spacing-lg)' }}>
-            {report.questions_asked.map((q, i) => (
-              <li key={i} style={{ fontSize: 'var(--font-size-base)', marginBottom: 'var(--spacing-sm)', lineHeight: 'var(--line-height-normal)' }}>
-                {q}
-              </li>
-            ))}
-          </ol>
-        </Card>
-      )}
-
-      {/* Full report text */}
-      {report.report_text && (
-        <Card style={{ padding: 'var(--spacing-xl)' }}>
-          <h2 style={{ fontSize: 'var(--font-size-lg)', marginBottom: 'var(--spacing-md)' }}>The experience</h2>
-          <p style={{ fontSize: 'var(--font-size-base)', lineHeight: 'var(--line-height-relaxed)', whiteSpace: 'pre-wrap', margin: 0 }}>
-            {report.report_text}
+      {/* Next steps — this page is where a submission lands, so the share
+          action must remain reachable here. It previously existed only in the
+          browse empty state, which disappears after the first contribution. */}
+      <Card
+        padding="xl"
+        style={{
+          marginTop: 'var(--spacing-xl)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 'var(--spacing-lg)',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <h2 style={{ fontSize: 'var(--font-size-lg)', marginBottom: 'var(--spacing-xs)' }}>
+            Interviewed somewhere else?
+          </h2>
+          <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 0 }}>
+            Every experience you add strengthens the interview knowledge base.
           </p>
-        </Card>
-      )}
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexShrink: 0, flexWrap: 'wrap' }}>
+          <Button variant="secondary" onClick={() => router.push('/reports')}>
+            Browse experiences
+          </Button>
+          <Button onClick={() => router.push('/share')}>
+            Share another experience
+          </Button>
+        </div>
+      </Card>
     </div>
   );
-}
-
-const metaStyle = {
-  fontSize: 'var(--font-size-sm)',
-  color: 'var(--text-secondary)',
-};
-
-function formatOutcome(outcome) {
-  const map = { offer: 'Offer received', advance: 'Advanced to next round', reject: 'Rejected', no_response: 'No response yet' };
-  return map[outcome] || outcome;
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return '';
-  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(d);
 }

@@ -16,7 +16,10 @@ export async function POST(request) {
     const result = await runCreditReconciliation();
     return NextResponse.json({ data: result });
   } catch (err) {
-    console.error('POST /api/cron/credits', err);
+    console.error('/api/cron/credits', err);
     return internalError();
   }
 }
+
+// Vercel Cron invokes the path with GET and attaches CRON_SECRET as a bearer token.
+export const GET = POST;

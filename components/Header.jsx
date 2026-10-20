@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import ConfirmationModal from '@/components/ConfirmationModal';
-import CreditBadge from '@/components/CreditBadge';
 
 export default function Header() {
   const { user } = useAuth();
@@ -88,8 +87,6 @@ export default function Header() {
           <Link href="/jobs" style={getPrimaryLinkStyle(isActive('/jobs'))}>
             Jobs
           </Link>
-
-          {user && <CreditBadge />}
 
           <div style={menuAnchorStyle}>
             <button

@@ -1,4 +1,8 @@
-import { CAREER_AREA_RULES, CAREER_AREA_TO_LEGACY_FAMILY } from '../../classification/catalog.js';
+import {
+  CAREER_AREA_RULES,
+  CAREER_AREA_TO_LEGACY_FAMILY,
+  BODY_SAFE_FAMILY_AREAS,
+} from '../../classification/catalog.js';
 import { extractionResult, missingResult } from '../types.js';
 import { computeConfidence } from '../confidence.js';
 
@@ -24,6 +28,8 @@ export function extract(ctx) {
       });
       continue;
     }
+    // `titleOnly` rules (bare "AI") are far too weak in bodies to classify a job.
+    if (rule.titleOnly) continue;
     // Body: skip overly broad tokens that false-positive (handled in catalog for react)
     const inBody = rule.patterns.some((p) => p.test(body));
     if (inBody) {
@@ -37,7 +43,22 @@ export function extract(ctx) {
   }
 
   hits.sort((a, b) => Number(b.title) - Number(a.title) || b.confidence - a.confidence);
-  const values = [...new Set(hits.map((h) => h.value))];
+
+  // Title evidence always wins, and a concrete title area (sales, legal,
+  // engineering…) beats a generic "AI" token inside the title. When the title
+  // says nothing, only high-precision technical body areas may decide the
+  // family — "AI", "compliance", "revenue" and "growth" never do.
+  const titleHit = hits.find((h) => h.title && h.value !== 'ai') || hits.find((h) => h.title);
+  const bodyHit = hits.find((h) => !h.title && BODY_SAFE_FAMILY_AREAS.has(h.value)) || null;
+  const primaryHit = titleHit || bodyHit || null;
+  const primary = primaryHit?.value ?? null;
+
+  // Keep the primary value first for consumers that read `[0]`.
+  const values = [];
+  if (primary) values.push(primary);
+  for (const hit of hits) {
+    if (!values.includes(hit.value)) values.push(hit.value);
+  }
 
   if (!values.length) {
     return {
@@ -46,8 +67,7 @@ export function extract(ctx) {
     };
   }
 
-  const primary = values[0];
-  const conf = hits[0]?.confidence ?? 0.7;
+  const conf = primaryHit?.confidence ?? hits[0]?.confidence ?? 0.7;
   const family =
     primary && Object.prototype.hasOwnProperty.call(CAREER_AREA_TO_LEGACY_FAMILY, primary)
       ? CAREER_AREA_TO_LEGACY_FAMILY[primary]
@@ -59,7 +79,7 @@ export function extract(ctx) {
       confidence: computeConfidence('regex', conf, { hasEvidence: true }),
       source: 'regex',
       status: conf >= 0.85 ? 'trusted' : 'ambiguous',
-      evidence: hits[0]?.evidence || null,
+      evidence: primaryHit?.evidence || null,
       extractor: EXTRACTOR,
     }),
     jobFamily: extractionResult({

@@ -16,7 +16,7 @@ Domain and technical terms used across Kazana documentation.
 | **Resume Vault** | Candidate surface to upload/discover resumes that passed company screening |
 | **Jobs Dashboard** | Acquisition/retention surface for browsing jobs—not the strategic moat |
 | **Job Discovery / Matches** | Ingested jobs matched to a candidate profile |
-| **AI Interview Practice** | Flagship B2C assessment experience (Phase 1+) |
+| **AI Interview Practice** | Flagship B2C assessment experience (Phase 2, deferred) |
 | **Interview experience report** | Confidence-scored submission about a real interview (learning signal) |
 | **Confidence score** | Probabilistic trust in a signal; preferred over binary verified/unverified |
 | **Discover** | Public browse UI for resumes (Resume Vault) |

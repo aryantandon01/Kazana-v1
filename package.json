@@ -19,12 +19,23 @@
     "ingest": "node scripts/ingestion/index.js",
     "ingest:full": "node scripts/ingestion/index.js --full",
     "extract:reprocess": "node scripts/ingestion/reprocess-extraction.js",
+    "db:backfill-families": "node scripts/ingestion/backfill-job-families.js",
     "ingest:probe-ats": "node scripts/ingestion/probe-ats-boards.js",
     "ingest:probe-ats:write": "node scripts/ingestion/probe-ats-boards.js --write",
     "ingest:generate-ats-sql": "node scripts/ingestion/generate-ats-sources-sql.js",
     "match": "node scripts/matching/index.js",
     "notify": "node scripts/notifications/index.js",
+    "notify:manual": "node scripts/notifications/manual.js",
+    "worker:ingest": "node scripts/worker/ingest.js",
+    "worker:pulse": "node scripts/worker/pulse.js",
     "db:migrate": "node db/migrate.js",
+    "db:status": "node db/migrate.js --status",
+    "db:diff": "node db/migrate.js --status --diff",
+    "db:record": "node db/migrate.js --record",
+    "db:dry-run": "node db/migrate.js --dry-run",
+    "db:probes": "node db/migrate.js --debug-probes",
+    "credits:audit": "node scripts/verify-user-credits.mjs",
+    "credits:backfill": "node scripts/verify-user-credits.mjs --fix",
     "postinstall": "patch-package"
   },
   "dependencies": {
@@ -33,6 +44,7 @@
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.52.0",
     "expo-server-sdk": "^3.15.0",
+    "fast-xml-parser": "^5.11.2",
     "next": "^15.3.4",
     "pdfjs-dist": "^5.4.54",
     "react": "^19.1.0",
@@ -45,10 +57,10 @@
   "devDependencies": {
     "eslint": "^9.30.1",
     "eslint-config-next": "^15.3.4",
-    "fast-xml-parser": "^5.9.3",
     "patch-package": "^8.0.0",
+    "pg": "^8.23.1",
     "postinstall-postinstall": "^2.1.0",
-    "vitest": "^3.2.4"
+    "vitest": "^5.0.2"
   },
   "resolutions": {
     "pdfjs-dist": "5.4.54"

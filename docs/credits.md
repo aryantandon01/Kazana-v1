@@ -6,6 +6,12 @@ Kazana's universal AI-currency and usage-control layer. Users see **AI Credits**
 Kazana feature → AI operation → credit cost → AI provider/model → usage tracking
 ```
 
+> **Status: built, deferred.** The credits layer, ledger schema, and API surface
+> exist in the repo and are tested, but **AI Credits are not currently
+> user-facing** (the header credits UI was removed). Monetization and paid gating
+> return in Phase 2 alongside the AI Interview Practice surface — see
+> [roadmap.md](./roadmap.md) and [ADR-019](./decisions.md).
+
 ## Concepts (three separate layers)
 
 | Layer | Tables | Responsibility |

@@ -72,8 +72,7 @@ Better assessments → candidate value + enterprise products
 | **Assessment** (growing) | AI interviews, rubrics, scores | **Core product** |
 | **Experience reports** | Confidence-scored interview submissions | Calibration labels |
 | **Enterprise screening / workflow** (future) | Screens, scorecards, notes | Monetization + outcome labels |
-| **Notifications** | Push / digests | Retention into the flywheel |
-| **Credits / entitlements** | AI Credits ledger, plans, entitlements, AI usage/cost tracking | Monetization + unit economics |
+| **Notifications** | Channel-routed match alerts (push + opt-in WhatsApp) | Retention into the flywheel |
 
 Contexts share **PostgreSQL** and **async workers**—not in-process singletons.
 
@@ -108,6 +107,30 @@ Current example: job extraction ETL (`scripts/ingestion/extraction/`) with DeepS
 
 ---
 
+## AI operation abstraction (credits)
+
+Every billable AI capability is expressed as an **AI operation** with a configurable
+credit cost, resolved through a single gate (`lib/credits/gate.js` → `runWithCredits`):
+
+```
+feature → AI operation (ai_operations.credit_cost) → provider adapter → ai_usage
+```
+
+- **Why it exists:** the assessment engine (Phase 2) will be the primary AI-cost
+  consumer, and monetization ("AI Credits") must not be re-plumbed per feature.
+- **Provider- and feature-agnostic:** reserving, recording usage, and refunding
+  happen once, above the model adapter and below the product feature.
+- **Entitlements, not feature flags:** plan → `plan_entitlements` → feature access;
+  the ledger (`credit_transactions`) is append-only and authoritative.
+- **Status: built but deferred.** The layer, schema, and API exist and are tested,
+  but the user-facing credits UI and any paid gating are **not currently exposed**
+  (see [credits.md](./credits.md) and [ADR-019](./decisions.md)). Resume
+  Optimization is the first intended consumer if AI usage must be metered.
+- **Invariant:** browser clients never mutate credits; all mutations run in
+  `SECURITY DEFINER` functions granted only to `service_role`.
+
+---
+
 ## WHY this architecture
 
 | Decision | Why | Rejected |
@@ -137,9 +160,8 @@ Current example: job extraction ETL (`scripts/ingestion/extraction/`) with DeepS
 | Web | Next.js App Router | Same |
 | Mobile | Expo app present | Full Phase 1 journeys |
 | Jobs + extraction + matching | Implemented | Feeds practice targeting |
-| Assessment engine | Live v2 (`/practice`: normalized `practice_dimension_scores`, competency vector, deterministic weighted rollup, reproducible provider/model/prompt/rubric/temperature) | Calibration store + outcome correlation (Phase 2) |
+| Assessment engine | Backend present (`lib/assessment/`: normalized `practice_dimension_scores`, competency vector, deterministic weighted rollup, reproducible provider/model/prompt/rubric/temperature) — **not currently exposed** (surface deferred) | Surfaced as AI Interview Practice in Phase 2 |
 | Interview experience reports | Live v1 (`/share`, `/reports`: confidence-scored, probabilistic) | Corroboration graph + calibration labels |
-| AI Credits & Entitlements | Live (ledger, atomic reserve/finalize/release, idempotency, configurable `ai_operations` catalog, `ai_usage` telemetry, Free/Premium plans + provider-agnostic billing abstraction; resume optimization is gated) | Payment provider, credit packs, calibration-driven pricing |
 | Enterprise | Not built | Phases 3–5 |
 
 ---

@@ -23,6 +23,10 @@ export default function Settings() {
     max_pushes_per_day: 5,
     quiet_hours_start: '22:00',
     quiet_hours_end: '08:00',
+    whatsapp_enabled: false,
+    whatsapp_phone: '',
+    whatsapp_min_match_score: 0.7,
+    whatsapp_daily_limit: 3,
   });
   const [profile, setProfile] = useState({
     location: '',
@@ -59,6 +63,11 @@ export default function Settings() {
             max_pushes_per_day: Number(prefs.max_pushes_per_day),
             quiet_hours_start: prefs.quiet_hours_start,
             quiet_hours_end: prefs.quiet_hours_end,
+            whatsapp_enabled: Boolean(prefs.whatsapp_enabled),
+            // Empty string clears the enrolment (the API normalises to null).
+            whatsapp_phone: prefs.whatsapp_phone ? prefs.whatsapp_phone : null,
+            whatsapp_min_match_score: Number(prefs.whatsapp_min_match_score),
+            whatsapp_daily_limit: Number(prefs.whatsapp_daily_limit),
           },
           profile: {
             location: profile.location || null,
@@ -112,6 +121,55 @@ export default function Settings() {
             <div>
               <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontSize: 'var(--font-size-sm)' }}>Quiet hours end (UTC)</label>
               <Input value={prefs.quiet_hours_end} onChange={(e) => setPrefs((p) => ({ ...p, quiet_hours_end: e.target.value }))} />
+            </div>
+          </div>
+
+          <h2 style={{ fontSize: 'var(--font-size-lg)', marginBottom: 'var(--spacing-md)', marginTop: 'var(--spacing-lg)' }}>WhatsApp notifications</h2>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-md)' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(prefs.whatsapp_enabled)}
+              onChange={(e) => setPrefs((p) => ({ ...p, whatsapp_enabled: e.target.checked }))}
+              style={{ marginTop: '0.2rem' }}
+            />
+            <span>
+              Send job matches to WhatsApp
+              <span style={{ display: 'block', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginTop: '0.15rem' }}>
+                Opt-in. Add your number below to activate this channel.
+              </span>
+            </span>
+          </label>
+          <div style={{ marginBottom: 'var(--spacing-md)' }}>
+            <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontSize: 'var(--font-size-sm)' }}>WhatsApp number (country code required)</label>
+            <Input
+              type="tel"
+              inputMode="tel"
+              value={prefs.whatsapp_phone || ''}
+              onChange={(e) => setPrefs((p) => ({ ...p, whatsapp_phone: e.target.value }))}
+              placeholder="+14155550123"
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)', marginBottom: 'var(--spacing-lg)' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontSize: 'var(--font-size-sm)' }}>Minimum match score (0–1)</label>
+              <Input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={prefs.whatsapp_min_match_score}
+                onChange={(e) => setPrefs((p) => ({ ...p, whatsapp_min_match_score: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 'var(--spacing-xs)', fontSize: 'var(--font-size-sm)' }}>Max WhatsApp messages per day</label>
+              <Input
+                type="number"
+                min={0}
+                max={50}
+                value={prefs.whatsapp_daily_limit}
+                onChange={(e) => setPrefs((p) => ({ ...p, whatsapp_daily_limit: e.target.value }))}
+              />
             </div>
           </div>
 

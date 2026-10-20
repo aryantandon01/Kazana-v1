@@ -48,15 +48,44 @@ New/updated job
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ Threshold +     │  score >= user_min_threshold
-│ dedupe          │  skip if already notified for job
+│ Threshold +     │  score >= per-channel threshold
+│ dedupe          │  unique (user_id, job_id, channel)
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ Persist matches │
-│ enqueue notify  │
+│ Persist matches │  upsert — existing rows are not re-notified
+│ enqueue notify  │  new matches only, one row per channel
 └─────────────────┘
 ```
+
+---
+
+## Candidate window and freshness
+
+Two time axes are intentionally kept separate:
+
+| Axis | Used for | Rule |
+|------|----------|------|
+| `jobs.discovered_at` | Which jobs the worker scores | Jobs discovered in the last **48h** (hourly run), capped at **2,000** per run |
+| `jobs.posted_at` | Whether a match may notify | Posted within **7 days**. If unknown, `discovered_at` within **48h** |
+
+- **Never select candidates by `posted_at`.** Many ATS feeds omit it or report an old employer date, so newly ingested jobs would never be scored.
+- **Existing match rows are always re-scored**, even outside the window, so matches the live engine no longer accepts are deleted.
+- The global cap is a cost bound, not a freshness rule. One-off backfills score the full active backlog:
+  `npm run match -- --all-active --limit-jobs 21000 --no-notify`
+- `job_family` is title-first (see `scripts/ingestion/classification/catalog.js`). After rule changes run
+  `npm run db:backfill-families` (dry run) then `-- --allow-null --apply`.
+
+### Worker CLI (`npm run match -- …`)
+
+| Flag | Effect |
+|------|--------|
+| `--job <id>` | Score one job |
+| `--user <id>` | Score one user (wider 90-day window, 800-job family-biased set) |
+| `--since-hours <n>` | Override the default `discovered_at` lookback |
+| `--limit-jobs <n>` | Override the candidate cap (paginates past PostgREST's 1,000-row limit) |
+| `--all-active` | No practical discovery window (use with `--limit-jobs` for backfills) |
+| `--no-notify` | Score and persist without enqueueing notifications (always use for backfills) |
 
 ---
 
@@ -66,13 +95,12 @@ Weights live in `lib/matching/weights.js` (tune without code changes):
 
 | Signal | Weight |
 |--------|--------|
-| Skills | 30% |
-| Career Areas | 20% |
-| Experience | 15% |
-| Semantic similarity (token cosine; swap for embeddings later) | 15% |
-| Location | 10% |
-| Company preference | 5% |
-| Work arrangement | 5% |
+| Experience (dominant; gated) | 36% |
+| Skills | 24% |
+| Career Areas | 12% |
+| Location (city 100% / country 80% / continent 25%) | 12% |
+| Semantic similarity (token cosine; swap for embeddings later) | 8% |
+| Job family proximity (58-family cluster taxonomy) | 8% |
 
 Each recommendation exposes: score, tier, confidence, strengths, missing skills, breakdown, and recommendation reasons.
 
@@ -93,7 +121,7 @@ Ranking also boosts freshness and preferred companies (`RANKING_BOOSTS`).
 | `score` | 0.0–1.0 |
 | `reasons` | jsonb array e.g. `["job_family", "company"]` |
 | `created_at` | |
-| `notified_at` | null until push sent |
+| `notified_at` | null until a notification is sent (any channel) |
 
 **Unique:** `(user_id, job_id)`
 
@@ -148,8 +176,8 @@ Ranking also boosts freshness and preferred companies (`RANKING_BOOSTS`).
 | Mistake | Consequence |
 |---------|-------------|
 | Matching on every page load | O(users × jobs) disaster |
-| No notification cap | Push fatigue, uninstalls |
-| Ignoring timezone | 3am notifications |
+| No notification cap | Push fatigue, uninstalls — mitigated by per-channel daily limits in [notifications.md](./notifications.md) |
+| Ignoring timezone | 3am notifications — quiet hours exist but are currently evaluated in **UTC** |
 
 ---
 

@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './supabase.js';
 import { getAdapterForSource } from './adapters/index.js';
+import { mapPool } from '../../lib/concurrency.js';
 import { normalizeJob } from './normalize.js';
 import { applyFreshness } from './freshness.js';
 import {
@@ -17,6 +18,7 @@ import {
 import {
   accumulateLlmUsage,
   emptyLlmUsageTotals,
+  mergeLlmUsageTotals,
 } from './extraction/llm/cost.js';
 import { runExtractionBatch } from './extraction/llm/batch.js';
 
@@ -140,10 +142,11 @@ function buildExtractionContext(normalized, raw) {
 
 /**
  * @param {string} [sourceSlug]
- * @param {{ mode?: import('./types.js').IngestMode }} [options]
+ * @param {{ mode?: import('./types.js').IngestMode, concurrency?: number }} [options]
  */
 export async function runIngestion(sourceSlug, options = {}) {
   const mode = options.mode || 'incremental';
+  const concurrency = Math.min(16, Math.max(1, Math.floor(Number(options.concurrency) || 1)));
 
   let query = supabaseAdmin
     .from('job_sources')
@@ -161,11 +164,18 @@ export async function runIngestion(sourceSlug, options = {}) {
     return [];
   }
 
-  const results = [];
-  for (const source of sources) {
-    results.push(await ingestSource(source, mode));
+  if (concurrency === 1) {
+    const results = [];
+    for (const source of sources) {
+      results.push(await ingestSource(source, mode));
+    }
+    return results;
   }
-  return results;
+
+  // `ingestSource` records success/failure per source, so concurrent sources do
+  // not interfere: each has its own ingestion_runs row and upserts independent
+  // jobs. Provider rate limits are the reason the cap is enforced here.
+  return mapPool(sources, concurrency, (source) => ingestSource(source, mode));
 }
 
 /**
@@ -234,6 +244,8 @@ async function ingestSource(source, mode) {
       const useBatchedLlm =
         process.env.EXTRACTION_MODE === 'llm' ||
         (process.env.EXTRACTION_MODE !== 'rule' && !!process.env.DEEPSEEK_API_KEY);
+      let batchLlmValues = new Map();
+      let batchLlmModel = null;
       if (useBatchedLlm) {
         const batchInput = batch
           .map((raw) => {
@@ -244,14 +256,27 @@ async function ingestSource(source, mode) {
               company: normalized.company_name,
               location: normalized.location,
               description: normalized.description,
+              url: normalized.url,
+              // ATS structured fields — rendered as locked inputs in the prompt.
+              yearsRequired:
+                raw.years_required ?? raw.minimumExperience ?? raw.years_required_min ?? null,
+              employmentType: raw.employment_type || raw.employmentType || null,
+              workArrangement: raw.work_arrangement || raw.workArrangement || null,
+              salary: raw.salary || raw.compensation || null,
+              tags: raw.tags || raw.category || [],
             };
           })
-          .filter((j) => j.externalId);
-        const batched = await runExtractionBatch(batchInput);
-        for (const [externalId, result] of batched.map.entries()) {
-          extractionsByExternalId.set(externalId, result);
+          .filter((j) => j.externalId && j.title && j.url);
+        if (batch.length > 0 && batchInput.length === 0) {
+          console.warn(
+            '  LLM batch skipped: no valid batch inputs (missing external_id/title/url); using per-job extraction',
+          );
         }
+        const batched = await runExtractionBatch(batchInput);
+        batchLlmValues = batched.llmValuesByExternalId;
+        batchLlmModel = batched.model;
         llmCalls += batched.llmCalls;
+        llmUsage = mergeLlmUsageTotals(llmUsage, batched.llmUsageTotals);
         if (batched.errors.length) {
           console.warn(`  LLM batch errors (${batched.errors.length})`, batched.errors.slice(0, 3));
         }
@@ -274,9 +299,16 @@ async function ingestSource(source, mode) {
             jobsVersioned += 1;
           }
 
-          const extractionResult = await runExtraction(buildExtractionContext(withFreshness, raw));
+          const externalId = String(normalized.external_id);
+          const llmValues = batchLlmValues.get(externalId) || null;
+          const extractionResult = await runExtraction(
+            buildExtractionContext(withFreshness, raw),
+            llmValues ? { llmValues, llmModel: batchLlmModel } : {},
+          );
           extracted += 1;
-          if (extractionResult.meta?.llm_called) {
+          // Chunk usage was already merged once above; only account per-job
+          // usage for jobs that fell back to the single-LLM path.
+          if (extractionResult.meta?.llm_called && extractionResult.meta.llm_source !== 'batch') {
             llmCalls += 1;
             accumulateLlmUsage(
               llmUsage,
@@ -284,7 +316,7 @@ async function ingestSource(source, mode) {
               extractionResult.meta.llm_model,
             );
           }
-          extractionsByExternalId.set(String(normalized.external_id), extractionResult);
+          extractionsByExternalId.set(externalId, extractionResult);
           const patch = extractionToJobPatch(extractionResult);
 
           // Drop adapter-only fields that are not DB columns

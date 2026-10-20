@@ -83,16 +83,25 @@ API → DB with user context (RLS applies)
 | GET | `/lookups/countries?q=` | Public | Search countries |
 | GET | `/lookups/universities?q=` | Public | Search universities |
 
-### Job Discovery (planned)
+### Job Discovery (live)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/jobs` | Public | List/search jobs |
 | GET | `/jobs/:id` | Public | Job detail |
 | GET | `/matches` | Required | User's matched jobs |
-| GET | `/preferences/notifications` | Required | Get notification prefs |
-| PATCH | `/preferences/notifications` | Required | Update prefs |
+| GET | `/preferences` | Required | Get notification + matching prefs |
+| PATCH | `/preferences` | Required | Update prefs (incl. opt-in WhatsApp number) |
 | POST | `/devices` | Required | Register push token |
+| GET | `/notifications` | Required | User's notification history (all channels) |
+
+### Internal
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/notifications/test` | Required + `ENABLE_NOTIFICATION_TEST=true` | Dev-only delivery probe (own recipient only) |
+| POST | `/cron/match` | `CRON_SECRET` | Run the matching worker |
+| POST | `/cron/notify` | `CRON_SECRET` | Drain the notification queue |
 
 ### System (internal)
 

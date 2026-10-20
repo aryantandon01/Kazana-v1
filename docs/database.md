@@ -11,7 +11,7 @@ Defines PostgreSQL schema strategy, Supabase configuration, Row Level Security (
 | Component | Choice | Why |
 |-----------|--------|-----|
 | Database | Supabase PostgreSQL | Relational model, RLS, managed ops |
-| Migrations | SQL files in repo → Supabase SQL Editor / CLI (target: formal migration runner) | Versioned schema |
+| Migrations | SQL files in repo → `npm run db:migrate` (direct Postgres) or Supabase SQL Editor | Versioned, verified schema |
 | File storage | Supabase Storage bucket `resumes` | Integrated auth policies |
 | Auth users | `auth.users` (Supabase) | OAuth + email |
 
@@ -36,6 +36,8 @@ users_profile ──► notification_preferences
        │
        └──► matches ◄── jobs ◄── job_sources
 ```
+
+**Status:** everything in the block above is **implemented** — the `--- PLANNED ---` label is stale. `user_profiles`, `matches`, `notification_preferences`, `notification_queue`, and `device_tokens` all ship in `20260706120000_discovery_matching_notifications.sql`.
 
 ---
 
@@ -88,28 +90,14 @@ SQL seed files in repo root: `create_companies_table.sql`, `create_countries_tab
 | `facets` / `job_facets` | Structured multi-valued attributes (Career Areas, Experience, …) | **Implemented** — `20260719090000_semantic_facets_tags.sql` |
 | `tags` / `job_tags` | Semantic descriptors with provenance (employer / ai / community) | **Implemented** — same migration |
 | `user_profiles` | Preferences, target roles, locations | Partial (visit tracking) |
-| `matches` | user_id + job_id + score + notified_at | Planned |
-| `notification_queue` | Outbound push/email jobs | Planned |
-| `device_tokens` | FCM/OneSignal tokens per user/device | Planned |
+| `matches` | user_id + job_id + score + notified_at | **Implemented** — `20260706120000_discovery_matching_notifications.sql` |
+| `notification_preferences` | Per-channel opt-in, thresholds, quiet hours | **Implemented** — same migration; WhatsApp columns in `20261110090000_whatsapp_notifications.sql` |
+| `notification_queue` | Outbound notification jobs **and** per-channel delivery log | **Implemented** — same migrations (channel + `provider_message_id`) |
+| `device_tokens` | Expo push tokens per user/device | **Implemented** — same migration |
 
 SQL: `create_jobs_tables.sql`, RLS: `rls_policies_jobs.sql`, semantic: `db/migrations/20260719090000_semantic_facets_tags.sql`
 
 See [ingestion.md](./ingestion.md) (Facets vs Tags) and [matching.md](./matching.md) for field-level detail.
-
-## Credits & Entitlements tables
-
-| Table | Purpose |
-|-------|---------|
-| `plans` | Free/Premium catalog; welcome + monthly credit grants (configurable) |
-| `plan_entitlements` | Feature access per plan (`jobs`, `matching`, `resume_optimization`, …) |
-| `subscriptions` | User → plan, provider-agnostic status + billing period |
-| `credit_transactions` | Append-only ledger (positive = grant/purchase/refund, negative = usage/expiration) |
-| `credit_operations` | AI operation lifecycle (`reserved → consumed | refunded`) + idempotency key |
-| `user_credits` | Cached balance (`available_credits ≥ 0`, `reserved_credits ≥ 0`) |
-| `ai_operations` | Central AI operation catalog with configurable `credit_cost` |
-| `ai_usage` | Actual provider/model/token consumption per call (unit economics) |
-
-All credit mutations go through `SECURITY DEFINER` functions (`credit_reserve`, `credit_finalize`, `credit_release`, `credit_grant`, `credit_expire`, `credit_adjust`, `process_monthly_grants`, `release_stale_reservations`) granted **only to `service_role`**. Ledger tables have owner-read-only RLS — the client can never write. Migration: `db/migrations/20260901010000_ai_credits_entitlements.sql`. Details: [credits.md](./credits.md).
 
 ---
 
@@ -125,16 +113,86 @@ All credit mutations go through `SECURITY DEFINER` functions (`credit_reserve`, 
 
 ## Migration strategy
 
-### Current (prototype)
+### Checking what is actually applied
 
-1. SQL files in repository root
-2. Manual execution in Supabase SQL Editor
-3. Documented in `MIGRATION_GUIDE.md`
+The ledger alone is not trustworthy: migrations pasted into the **Supabase SQL Editor** never write it. `npm run db:status` therefore checks **both** the ledger and the live catalog (`pg_catalog` / `information_schema`), using one probe per object a migration creates (tables, indexes, policies, functions, triggers, columns, RLS enablement).
+
+1. Put the direct connection string in `.env` as `DATABASE_URL` (Dashboard → Settings → Database → Connection string). Use the direct connection (port 5432) or the session pooler — the transaction pooler (6543) is not suitable for multi-statement migrations.
+2. Run `npm run db:status`:
+
+| State | Meaning | Action |
+|---|---|---|
+| `applied` | Ledger and objects agree | none |
+| `applied, missing from ledger` | Objects exist, ledger row absent | `npm run db:migrate` records it |
+| `pending` | No objects found | `npm run db:migrate` applies it |
+| `partial` | Some objects found | inspect, then re-run with `--force` |
+| `drifted` | Ledger says applied, objects are gone | inspect, then re-run with `--force` |
+| `unverifiable` | Data-only file (seeds, `UPDATE`/`DELETE` fixes); no schema probes | verify with a query, then `npm run db:record -- <version>` |
+| `ledger only` | Data-only file that is already recorded | none |
+
+3. `npm run db:migrate` applies pending files through the direct connection and writes `public.schema_migrations`. Related commands:
+   - `npm run db:dry-run` — print the plan, change nothing
+   - `npm run db:diff` — list the exact objects a `partial` file is missing
+   - `node db/migrate.js --force` — re-run `partial` / `drifted` / `unverifiable` files
+   - `npm run db:record -- <version>...` — backfill the ledger **without executing** (data-only migrations; never replays a destructive `DELETE`)
+   - `node db/migrate.js --json` — machine-readable output (includes `missing` objects)
+   - `npm run db:status -- --strict` — exit 1 on `pending` / `partial` / `drifted` (CI gate)
+
+Without `DATABASE_URL` the script falls back to a read-only ledger view through `supabase-js` and prints the files that are not recorded.
+
+### Current state (2026-10-17)
+
+`public.schema_migrations` now holds **21 of 21** rows and `npm run db:status -- --strict` exits 0. Reconciliation found no real drift: every file either matched its probes or was a data-only migration confirmed by query.
+
+Two probe details matter when adding migrations:
+
+- **Policy names are case-sensitive.** `pg_policies.policyname` preserves the case of a quoted identifier, so `CREATE POLICY "Users read own profile"` must stay title-cased; an unquoted policy is folded to lowercase.
+- **Triggers are keyed by `schema.table.name`.** A trigger on `auth.users` (e.g. `on_auth_user_created`) lives in the `auth` schema, not `public`.
+
+`applied` = ledger and objects agree · `ledger only` = data-only file already recorded. The seven `ledger only` files (`20260706230000`, `20260707020000`, `20260707030000`, `20260710080000`, `20260710100000`, `20260731120000`, `20260814000000`) have no schema probes by design; `--strict` ignores them.
+
+### Supabase CLI
+
+Installed with `brew install supabase/tap/supabase` (v2.121.0). Optional for day-to-day work, useful for its own ledger and for drift checks.
+
+```bash
+supabase migration list --db-url "$DATABASE_URL"      # CLI ledger vs local files
+supabase migration repair --db-url "$DATABASE_URL" --status applied <version>
+```
+
+The CLI keeps a **separate** ledger, `supabase_migrations.schema_migrations`. Every migration so far was applied outside the CLI, so it starts empty; use `migration repair --status applied` to adopt it after the local files are verified.
+
+`supabase db diff`, `db pull` and `db dump` **require a running Docker daemon** (they run `pg_dump` / `migra` in containers), so they do not work on a Docker-less machine. Without Docker, use the `libpq` client tools (keg-only):
+
+```bash
+/opt/homebrew/opt/libpq/bin/pg_dump --schema-only --no-owner --no-privileges \
+  "$DATABASE_URL" > /tmp/kazana-schema.sql
+```
+
+### Rule: every migration must be re-runnable
+
+Because the SQL Editor has no version tracking, a migration can be run twice — by accident, after a partial failure, or when replaying a database from scratch. Every statement must therefore be idempotent:
+
+| Statement | Required form |
+|---|---|
+| `CREATE TABLE` | `CREATE TABLE IF NOT EXISTS` |
+| `CREATE INDEX` / `CREATE UNIQUE INDEX` | `... IF NOT EXISTS` |
+| `ADD COLUMN` | `ADD COLUMN IF NOT EXISTS` |
+| `ENABLE ROW LEVEL SECURITY` | already idempotent |
+| `CREATE POLICY` | `DROP POLICY IF EXISTS <name> ON <table>;` first — Postgres has **no** `CREATE POLICY IF NOT EXISTS` |
+| `ADD CONSTRAINT` | `DROP CONSTRAINT IF EXISTS <name>;` first |
+| `CREATE TRIGGER` | `DROP TRIGGER IF EXISTS <name> ON <table>;` first |
+| `CREATE FUNCTION` | `CREATE OR REPLACE FUNCTION` |
+| seed `INSERT` | `ON CONFLICT ... DO NOTHING` / `DO UPDATE` |
+
+Violating this rule produces `ERROR 42710: policy "<name>" for table "<table>" already exists` on the second run.
+
+**Generated seeds:** `scripts/ingestion/generate-ats-sources-sql.js` writes the ATS source files (`20260706230000`, `20260707030000`, `20260710080000`, `20260710100000`) with explicit UUIDs plus `ON CONFLICT (slug) DO NOTHING`, so they are safe to replay. Fix the generator, not the generated SQL.
 
 ### Target (production)
 
-1. Numbered migrations (`db/migrations/YYYYMMDDHHMMSS_description.sql`)
-2. Applied via Supabase CLI or CI on merge to `main`
+1. `npm run db:migrate` on merge to `main`, with `DATABASE_URL` supplied from CI secrets
+2. `npm run db:status -- --strict` as a deploy gate (fails on `pending` / `partial` / `drifted`)
 3. Backward-compatible additive changes preferred
 4. Destructive changes require ADR + expand-contract pattern
 

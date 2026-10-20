@@ -6,7 +6,7 @@ import Badge from '@/components/Badge';
 import Button from '@/components/Button';
 import CompanyAvatar from '@/components/CompanyAvatar';
 import MatchIndicator from '@/components/MatchIndicator';
-import JobMeta, { buildJobMetaItems } from '@/components/JobMeta';
+import Meta, { buildJobMetaItems } from '@/components/Meta';
 import { ChipGroup } from '@/components/Chip';
 import { getJobFreshnessDisplay } from '@/lib/jobs/freshness';
 
@@ -123,7 +123,7 @@ export default function JobCard({ job, match }) {
       )}
 
       {/* Metadata — grouped, secondary */}
-      <JobMeta items={metaItems} />
+      <Meta items={metaItems} />
 
       {/* 5–6. Career areas + tech — quiet, collapsed */}
       {(careerAreas.length > 0 || techTags.length > 0) && (

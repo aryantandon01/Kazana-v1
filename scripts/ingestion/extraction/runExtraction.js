@@ -22,8 +22,18 @@ import {
 /**
  * Multi-stage extraction → optional one-shot LLM → merge → validate → canonical.
  *
+ * `options.llmValues` supplies values already fetched by the batched LLM path.
+ * When present, they are merged instead of issuing a per-job LLM call — the
+ * deterministic extractors + ATS structured fields still take precedence via
+ * `mergeExtractions`.
+ *
  * @param {import('./types.js').ExtractionContext} ctx
- * @param {{ forceLlm?: boolean, threshold?: number }} [options]
+ * @param {{
+ *   forceLlm?: boolean,
+ *   threshold?: number,
+ *   llmValues?: Record<string, *>|null,
+ *   llmModel?: string|null,
+ * }} [options]
  */
 export async function runExtraction(ctx, options = {}) {
   const threshold =
@@ -49,30 +59,40 @@ export async function runExtraction(ctx, options = {}) {
   let llmCalled = false;
   let llmModel = null;
   let llmUsage = null;
+  let llmSource = null;
 
-  const provider = getLlmProvider();
-  if ((evaluation.needsLlm || options.forceLlm) && provider) {
-    try {
-      const prompt = buildExtractionPrompt(
-        {
-          title: ctx.title,
-          company: ctx.company,
-          location: ctx.location,
-          description: ctx.description,
-        },
-        evaluation.weakFields,
-      );
-      const result = await provider.completeJson(prompt);
-      llmCalled = true;
-      llmModel = result.model;
-      llmUsage = result.usage || null;
-      if (result.data) {
-        fieldMap = mergeExtractions(fieldMap, result.data, llmModel || 'llm');
+  if (options.llmValues && typeof options.llmValues === 'object') {
+    llmModel = options.llmModel || null;
+    fieldMap = mergeExtractions(fieldMap, options.llmValues, llmModel || 'deepseek-batch');
+    llmCalled = true;
+    llmSource = 'batch';
+    // Usage belongs to the shared chunk call and is accounted once by the caller.
+  } else {
+    const provider = getLlmProvider();
+    if ((evaluation.needsLlm || options.forceLlm) && provider) {
+      try {
+        const prompt = buildExtractionPrompt(
+          {
+            title: ctx.title,
+            company: ctx.company,
+            location: ctx.location,
+            description: ctx.description,
+          },
+          evaluation.weakFields,
+        );
+        const result = await provider.completeJson(prompt);
+        llmCalled = true;
+        llmSource = 'single';
+        llmModel = result.model;
+        llmUsage = result.usage || null;
+        if (result.data) {
+          fieldMap = mergeExtractions(fieldMap, result.data, llmModel || 'llm');
+        }
+      } catch (err) {
+        console.warn(
+          `  LLM extraction failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-    } catch (err) {
-      console.warn(
-        `  LLM extraction failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
     }
   }
 
@@ -85,6 +105,7 @@ export async function runExtraction(ctx, options = {}) {
     meta: {
       version: EXTRACTION_VERSION,
       llm_called: llmCalled,
+      llm_source: llmSource,
       llm_model: llmModel,
       llm_usage: llmUsage,
       weak_fields: evaluation.weakFields,

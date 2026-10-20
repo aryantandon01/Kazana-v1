@@ -18,31 +18,52 @@ See [vision.md](./vision.md).
 
 ## Phase 1 — Candidate Platform
 
-**Purpose:** Acquire users. Generate candidate value. Collect learning signals.
+**Purpose:** Acquire candidates. Generate candidate value. Collect learning signals. **This phase is the current focus.**
 
-| Product | Intent |
-|---------|--------|
-| Jobs Dashboard | Acquisition and retention (not the moat) |
-| Resume Optimization | Interview readiness; structured candidate data |
-| AI Interview Practice | Flagship B2C assessment experience |
-| Interview Experience Sharing | Early ground-truth loop (confidence-scored) |
+Phase 1 is delivered in three ordered sub-phases. **Resume Optimization (1B) is the current AI priority.** The assessment engine surface and its AI-credits layer are deliberately deferred to Phase 2 — see [ADR-019](./decisions.md#adr-019-defer-assessment--monetization-focus-phase-1-on-the-candidate-platform).
+
+### Phase 1A — Candidate foundation (live)
+
+| Product | Intent | Status |
+|---------|--------|--------|
+| Resume Vault (`/discover`, Add Resume) | Peer signal + structured candidate data | Live |
+| Jobs Dashboard | Acquisition and retention (not the moat) | Live |
+| Matches + preferences | Personalization; engagement with jobs | Live |
+| Match notifications (push + WhatsApp) | Re-engagement loop back into jobs; opt-in WhatsApp channel | Live |
+| Job extraction / matching | Single source of structured job data | Live |
+| Interview Experience Sharing (`/share`, `/reports`) | Early ground-truth loop (confidence-scored) | Live |
+
+### Phase 1B — Resume Optimization (current AI priority)
+
+Job-targeted resume rewrites, gap analysis, and readiness scoring that turn a resume into interview-ready, structured signal. **This is where AI investment lands now.**
+
+| Product | Intent | Status |
+|---------|--------|--------|
+| Resume Optimization (Resume Copilot) | Interview readiness; structured candidate data | In progress |
+
+### Phase 1C — Candidate platform hardening
+
+Deepen 1A/1B quality, retention, and data capture before the assessment engine returns in Phase 2.
 
 **Exit criteria (strategic):**
 
-- Candidates return for practice, not only job browsing
-- Structured signals flow from resumes, practice, and early experience reports
-- Jobs funnel into practice / prep rather than ending at “open external apply”
+- Candidates return for prep and job discovery, not only browsing
+- Structured signals flow from resumes, optimization, and early experience reports
+- Jobs funnel into resume prep rather than ending at “open external apply”
 
-**Current repo:** Resume Vault, Jobs, Matches, extraction, matching, **AI Interview Practice** (`/practice`, structured rubrics + confidence-scored assessments), and **Interview Experience Sharing** (`/share`, `/reports` — confidence-scored, probabilistic) are now live Phase 1 surfaces. Next investments: Resume Optimization and deepening the assessment engine (voice, coding, calibration).
+**Current repo:** Resume Vault, Jobs, Matches, match notifications (push + WhatsApp), extraction, matching, and **Interview Experience Sharing** (`/share`, `/reports` — confidence-scored, probabilistic) are live. Resume Optimization is the active build. **AI Interview Practice, the assessment-engine surface, and AI Credits monetization are deferred to Phase 2** — the backend assessment engine (`lib/assessment/`) and credit ledger exist in the repo but are not currently user-facing.
 
 ---
 
-## Phase 2 — Assessment Calibration
+## Phase 2 — AI Interview Practice & Assessment Calibration
 
-**Purpose:** Prove that Kazana assessments correlate with real hiring success.
+**Purpose:** Expose the (already-built) assessment engine as the flagship B2C product, and prove that Kazana assessments correlate with real hiring success.
+
+> **Deferred from Phase 1.** The assessment engine (`lib/assessment/`), practice schema, and AI-credits ledger exist in the repo but are not currently user-facing. We return to them once Phase 1 establishes the candidate platform and structured Resume Optimization signal.
 
 Learning inputs:
 
+- practice sessions (rubrics, scores, retries)
 - interview outcomes
 - advancement rates
 - offers and rejections
@@ -51,6 +72,7 @@ Learning inputs:
 
 **Exit criteria (strategic):**
 
+- AI Interview Practice surfaced as the flagship experience
 - Measurable correlation between practice/assessment scores and real outcomes
 - Calibration dashboards (internal) that track assessment quality over time
 - Clear versioning of assessment rubrics / models / prompts
@@ -104,11 +126,11 @@ At this point Kazana is an **AI decision-support platform** for hiring—not a p
 ## Flywheel (every phase)
 
 ```
-Jobs → Resume Optimization → AI Interview Practice → Real Interview
+Jobs → Resume Optimization → AI Interview Practice (Phase 2) → Real Interview
   → Experience Submission → Assessment Improvement → Better AI Interviews → More Users
 ```
 
-Phase 3–5 add enterprise edges to the same wheel; they must not fork a separate uncalibrated “AI product.”
+Phase 1 currently exercises the Jobs → Resume Optimization → Experience Submission arc; AI Interview Practice joins the wheel in Phase 2. Phase 3–5 add enterprise edges to the same wheel; they must not fork a separate uncalibrated “AI product.”
 
 ---
 
@@ -136,6 +158,8 @@ Phase 5 Hiring Intelligence (decision support)
 
 | Deferred | Until | Why |
 |----------|-------|-----|
+| AI Interview Practice surface | Phase 2 | Phase 1 is the candidate platform; Resume Optimization is the current AI priority |
+| AI Credits monetization / paid gating | Phase 2 | Built but not user-facing; meter AI only when the assessment surface returns |
 | Generic ATS replacement | Never (as identity) | Out of strategy |
 | Job board SEO as primary growth | Not the north star | Distracts from assessment moat |
 | Opaque “AI magic” without metrics | Never | Violates AI principles |
@@ -147,8 +171,8 @@ Phase 5 Hiring Intelligence (decision support)
 
 | Phase | Example metrics |
 |-------|-----------------|
-| 1 | Practice completion, retention, experience submissions, jobs→practice conversion |
-| 2 | Assessment↔outcome correlation, calibration error over time |
+| 1 | Resume optimization usage, retention, experience submissions, jobs→prep conversion |
+| 2 | Practice completion, assessment↔outcome correlation, calibration error over time |
 | 3 | Enterprise pilot conversion, screen→advance precision/recall |
 | 4 | Scorecard adoption, decision latency, label coverage |
 | 5 | Recommendation acceptance, interviewer calibration drift reduction |

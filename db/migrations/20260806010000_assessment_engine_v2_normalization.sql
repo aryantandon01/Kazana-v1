@@ -141,9 +141,12 @@ ALTER TABLE practice_dimension_scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assessment_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE confidence_rules ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "public read dimensions" ON dimensions;
 CREATE POLICY "public read dimensions" ON dimensions FOR SELECT USING (true);
+DROP POLICY IF EXISTS "public read rubric dimensions" ON rubric_dimensions;
 CREATE POLICY "public read rubric dimensions" ON rubric_dimensions FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "owner read evaluations" ON practice_question_evaluations;
 CREATE POLICY "owner read evaluations" ON practice_question_evaluations
   FOR SELECT USING (
     EXISTS (
@@ -153,6 +156,7 @@ CREATE POLICY "owner read evaluations" ON practice_question_evaluations
     )
   );
 
+DROP POLICY IF EXISTS "owner insert evaluations" ON practice_question_evaluations;
 CREATE POLICY "owner insert evaluations" ON practice_question_evaluations
   FOR INSERT WITH CHECK (
     EXISTS (
@@ -162,6 +166,7 @@ CREATE POLICY "owner insert evaluations" ON practice_question_evaluations
     )
   );
 
+DROP POLICY IF EXISTS "owner read dimension scores" ON practice_dimension_scores;
 CREATE POLICY "owner read dimension scores" ON practice_dimension_scores
   FOR SELECT USING (
     EXISTS (
@@ -172,6 +177,7 @@ CREATE POLICY "owner read dimension scores" ON practice_dimension_scores
     )
   );
 
+DROP POLICY IF EXISTS "owner insert dimension scores" ON practice_dimension_scores;
 CREATE POLICY "owner insert dimension scores" ON practice_dimension_scores
   FOR INSERT WITH CHECK (
     EXISTS (
@@ -182,12 +188,15 @@ CREATE POLICY "owner insert dimension scores" ON practice_dimension_scores
     )
   );
 
+DROP POLICY IF EXISTS "owner insert events" ON assessment_events;
 CREATE POLICY "owner insert events" ON assessment_events
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "owner read events" ON assessment_events;
 CREATE POLICY "owner read events" ON assessment_events
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "public read confidence rules" ON confidence_rules;
 CREATE POLICY "public read confidence rules" ON confidence_rules FOR SELECT USING (true);
 
 --- 9. Seed canonical dimensions (deduped slugs from v1 rubric JSONB) ---------

@@ -1,6 +1,8 @@
 # Agent guide
 
-Kazana is an **AI Hiring Intelligence Platform**. The assessment engine is the moat.
+Kazana is an **AI Hiring Intelligence Platform**. The assessment engine is the long-term moat.
+
+**Current focus (Phase 1):** candidate platform first. Resume Optimization is the current AI priority. The assessment-engine surface, AI Interview Practice, and AI Credits monetization are **deferred to Phase 2**.
 
 Before implementing features, read and follow:
 
