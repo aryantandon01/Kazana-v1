@@ -1,0 +1,47 @@
+# Kazana background workers — run on a small container host (not Vercel).
+#
+# Two long-running processes, one per service, each expecting a single replica:
+#   ingest — continuous job-source sweep (incremental, minutes per warm pass)
+#   pulse  — match -> notify every 5 minutes (the latency-critical loop)
+#
+# Both are guarded by the leased lock in public.worker_locks, so even if you
+# accidentally run a second replica, it skips instead of overlapping.
+#
+# Required env: SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) + SUPABASE_SERVICE_ROLE_KEY.
+# Optional: DEEPSEEK_API_KEY, DEEPSEEK_MODEL, WHATSAPP_*, WORKER_*.
+# `docker compose` auto-loads a `.env` in this directory; ${VAR:-default} reads
+# from it too. On a managed host (Railway/Fly/Render) set the same vars there.
+services:
+  ingest:
+    build: .
+    image: kazana-worker
+    command: ["node", "scripts/worker/ingest.js"]
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+      WORKER_INGEST_CONCURRENCY: ${WORKER_INGEST_CONCURRENCY:-8}
+      WORKER_INGEST_COOLDOWN_MINUTES: ${WORKER_INGEST_COOLDOWN_MINUTES:-5}
+
+  pulse:
+    build: .
+    image: kazana-worker
+    command: ["node", "scripts/worker/pulse.js"]
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_JOB_MATCH_TEMPLATE: ${WHATSAPP_JOB_MATCH_TEMPLATE:-job_match_alert}
+      WORKER_PULSE_MINUTES: ${WORKER_PULSE_MINUTES:-5}
+      WORKER_MATCH_LOOKBACK_HOURS: ${WORKER_MATCH_LOOKBACK_HOURS:-2}
+      WORKER_NOTIFY_LIMIT: ${WORKER_NOTIFY_LIMIT:-200}
