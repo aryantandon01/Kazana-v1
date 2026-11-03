@@ -29,7 +29,7 @@ Defines environments, hosting, CI/CD, secrets, and operational runbooks for Kaza
          │
          ▼
 ┌─────────────────┐     ┌──────────────────────────────┐
-│ Supabase Prod   │     │ Workers (container host)     │
+│ Supabase Prod   │     │ Workers (launchd, this Mac)  │
 │ • Postgres      │     │ • pulse: match→notify / 5 min│
 │ • Auth          │     │ • ingest: continuous sweep   │
 │ • Storage       │     └──────────────────────────────┘
@@ -44,8 +44,8 @@ Defines environments, hosting, CI/CD, secrets, and operational runbooks for Kaza
 | Component | How |
 |-----------|-----|
 | Web + API | Next.js on Vercel (`npm run build` → `next start`) |
-| Worker — pulse | Container host running `npm run worker:pulse` — match every user, then drain the queue every 5 minutes |
-| Worker — ingest | Same image, `node scripts/worker/ingest.js` — continuous source sweeps |
+| Worker — pulse | launchd agent `com.kazana.pulse` (`deploy/launchd/com.kazana.pulse.plist`) — match every user, then drain the queue every 5 minutes |
+| Worker — ingest | launchd agent `com.kazana.ingest` (`deploy/launchd/com.kazana.ingest.plist`) — continuous source sweeps |
 | DB | Supabase hosted. `npm run db:migrate` with `DATABASE_URL` (direct connection) applies pending files and records them in `public.schema_migrations` |
 | Mobile | EAS Build (Expo) |
 
@@ -55,25 +55,32 @@ They are safe to keep alongside the worker: matching upserts are idempotent and
 the dispatcher atomically claims rows, so a row can never be sent twice. Remove
 them if you want a single scheduler.
 
-### Container workers (Docker)
+### Workers (launchd)
 
-The two background loops run as one Docker image (`Dockerfile`) on a small
-container host — not Vercel, because Vercel functions are capped at 60 s
-(Hobby) / 300 s (Pro) and cron minimums do not fit. `docker-compose.yml` runs
-both services from that image:
+The two background loops run as launchd agents on this Mac — no Docker, no
+extra packages. Reference plists live in `deploy/launchd/`:
 
-| Service | Command | Role |
-|---------|---------|------|
-| `ingest` | `node scripts/worker/ingest.js` | continuous, incremental job-source sweep |
-| `pulse` | `node scripts/worker/pulse.js` | match -> notify every 5 minutes |
+| Agent | Script | Role |
+|-------|--------|------|
+| `com.kazana.ingest` | `scripts/worker/ingest.js` | continuous, incremental job-source sweep |
+| `com.kazana.pulse` | `scripts/worker/pulse.js` | match -> notify every 5 minutes |
 
 ```
-# any Docker host (docker compose auto-loads a .env here):
-docker compose up -d --build
-docker compose logs -f
+# LaunchAgents need no sudo; the committed plists already carry the real paths
+cp deploy/launchd/com.kazana.*.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kazana.ingest.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kazana.pulse.plist
+launchctl list | grep kazana
+tail -f ~/Library/Logs/kazana-pulse.log
 ```
 
-Both are guarded by the leased lock in `public.worker_locks` (migration
+The agents rely on the built-in `.env` loader (no environment-file key needed):
+put `SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`) and
+`SUPABASE_SERVICE_ROLE_KEY` in the `.env` at the repo root. `KeepAlive` restarts
+a crashed worker automatically; `launchctl bootout gui/$(id -u) <label>` stops
+it.
+
+Both loops are guarded by the leased lock in `public.worker_locks` (migration
 `20261111000000_worker_locks.sql`): a second replica skips instead of
 overlapping, a heartbeat extends the lease while a run is alive, and a crashed
 run expires automatically (ingest lease 15 min, pulse lease 5 min). Until the
@@ -81,13 +88,15 @@ migration is applied the lock fails open (logs a warning and runs unguarded).
 
 The ingest is incremental (`jobs` are fetched only since the last
 `last_fetched_at` per source), so a warm pass takes minutes — not the ~80 min a
-cold, months-long sweep takes. `last_fetched_at` is written per source, so a
-killed pass resumes on the next sweep.
+cold, months-long sweep takes.
 
-Worker env (required): `SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`) and
-`SUPABASE_SERVICE_ROLE_KEY`. Optional: `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL`,
-`WHATSAPP_*`, and the `WORKER_*` tunables — see `docker-compose.yml` and
-`.env.example`.
+These are LaunchAgents, so they run only while you are logged into the GUI
+session. To keep them alive headless (SSH-only, no login), copy the same plists
+to `/Library/LaunchDaemons/`, add `<key>UserName</key><string>aryan</string>`,
+and load them with `sudo launchctl bootstrap system ...`.
+
+The `Dockerfile` and `docker-compose.yml` remain as an alternative for a
+Linux/container host; launchd is the path on this Mac.
 
 Before the first run: apply the migration (`DATABASE_URL=... npm run db:migrate`
 or paste it into the Supabase SQL Editor).
@@ -167,7 +176,8 @@ To push freshness closer to the pulse cadence (not implemented yet):
 
 Any container host works (Railway, Fly.io, Render, ECS, or a VPS with
 `docker run --restart unless-stopped`). The image runs the CLI scripts; the web
-tier is unaffected.
+tier is unaffected. This is the containerized alternative to the launchd agents
+above — use it on a Linux/container host, not on this Mac.
 
 ```bash
 docker build -t kazana-worker .
