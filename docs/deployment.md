@@ -67,7 +67,9 @@ extra packages. Reference plists live in `deploy/launchd/`:
 
 ```
 # LaunchAgents need no sudo; the committed plists already carry the real paths
+mkdir -p ~/Library/LaunchAgents   # not present until the first agent is installed
 cp deploy/launchd/com.kazana.*.plist ~/Library/LaunchAgents/
+# bootstrap installs AND starts the agent immediately (RunAtLoad=true)
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kazana.ingest.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kazana.pulse.plist
 launchctl list | grep kazana
@@ -94,6 +96,13 @@ These are LaunchAgents, so they run only while you are logged into the GUI
 session. To keep them alive headless (SSH-only, no login), copy the same plists
 to `/Library/LaunchDaemons/`, add `<key>UserName</key><string>aryan</string>`,
 and load them with `sudo launchctl bootstrap system ...`.
+
+> **TCC gotcha (macOS).** A launchd agent cannot read `~/Documents`,
+> `~/Desktop`, or `~/Downloads` — the ESM loader's `package.json` lookup blocks
+> in `open()` and the worker appears to hang with empty logs. Keep the checkout
+> outside those folders (e.g. `/Users/aryan/kazana` or `/opt/kazana`) and point
+> the plists' `WorkingDirectory`/`ProgramArguments` there; alternatively grant
+> Full Disk Access to the `node` binary in System Settings.
 
 The `Dockerfile` and `docker-compose.yml` remain as an alternative for a
 Linux/container host; launchd is the path on this Mac.

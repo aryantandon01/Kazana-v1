@@ -8,11 +8,11 @@
     <key>ProgramArguments</key>
     <array>
         <string>/opt/homebrew/bin/node</string>
-        <string>/Users/aryan/Documents/GitHub/Kazana-v1/scripts/worker/ingest.js</string>
+        <string>/Users/aryan/kazana/scripts/worker/ingest.js</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/aryan/Documents/GitHub/Kazana-v1</string>
+    <string>/Users/aryan/kazana</string>
 
     <key>RunAtLoad</key>
     <true/>
