@@ -1,16 +1,25 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    {
-      "path": "/api/cron/match",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/notify",
-      "schedule": "5 * * * *"
-    },
     {
       "path": "/api/cron/credits",
       "schedule": "15 * * * *"
     }
-  ]
+  ],
+  "daemons": {
+    "ingest": {
+      "root": ".",
+      "entrypoint": "Dockerfile",
+      "command": ["node", "scripts/worker/ingest.js"],
+      "instances": { "iad1": 1 },
+      "terminationGracePeriodSeconds": 300
+    },
+    "pulse": {
+      "root": ".",
+      "entrypoint": "Dockerfile",
+      "command": ["node", "scripts/worker/pulse.js"],
+      "instances": { "iad1": 1 },
+      "terminationGracePeriodSeconds": 120
+    }
+  }
 }

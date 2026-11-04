@@ -4,7 +4,7 @@
 
 Defines the multi-channel notification architecture for Job Discovery: channel preferences, recipient registration, eligibility, delivery, retries, and observability.
 
-**Status: Implemented** — push (Expo `expo-server-sdk`) and **WhatsApp** (Meta WhatsApp Cloud API) behind one provider abstraction. Delivered by `npm run notify`, `POST /api/devices`, Vercel cron `/api/cron/notify`, and the matching worker. WhatsApp stays **dormant** until its env vars are provisioned.
+**Status: Implemented** — push (Expo `expo-server-sdk`) and **WhatsApp** (Meta WhatsApp Cloud API) behind one provider abstraction. Delivered by `npm run notify`, `POST /api/devices`, the pulse daemon (`scripts/worker/pulse.js`, deployed as a Vercel Daemon), and the matching worker. WhatsApp stays **dormant** until its env vars are provisioned.
 
 ---
 

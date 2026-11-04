@@ -28,13 +28,13 @@ Defines environments, hosting, CI/CD, secrets, and operational runbooks for Kaza
 └─────────────────────────────────────────────────────────┘
          │
          ▼
-┌─────────────────┐     ┌──────────────────────────────┐
-│ Supabase Prod   │     │ Workers (launchd, this Mac)  │
-│ • Postgres      │     │ • pulse: match→notify / 5 min│
-│ • Auth          │     │ • ingest: continuous sweep   │
-│ • Storage       │     └──────────────────────────────┘
-│ • Edge Fn       │        (Vercel cron = hourly fallback)
-└─────────────────┘
+┌─────────────────┐     ┌──────────────────────────────────────┐
+│ Supabase Prod   │     │ Vercel project (same deployment)     │
+│ • Postgres      │     │ • Next.js web + API (functions)      │
+│ • Auth          │     │ • daemon pulse: match→notify / 5 min │
+│ • Storage       │     │ • daemon ingest: continuous sweep    │
+│ • Edge Fn       │     │ • cron /api/cron/credits (hourly)    │
+└─────────────────┘     └──────────────────────────────────────┘
 ```
 
 ---
@@ -44,43 +44,48 @@ Defines environments, hosting, CI/CD, secrets, and operational runbooks for Kaza
 | Component | How |
 |-----------|-----|
 | Web + API | Next.js on Vercel (`npm run build` → `next start`) |
-| Worker — pulse | launchd agent `com.kazana.pulse` (`deploy/launchd/com.kazana.pulse.plist`) — match every user, then drain the queue every 5 minutes |
-| Worker — ingest | launchd agent `com.kazana.ingest` (`deploy/launchd/com.kazana.ingest.plist`) — continuous source sweeps |
+| Worker — pulse | Vercel Daemon `pulse` (`vercel.json` → `daemons.pulse`) — match every user, then drain the queue every 5 minutes |
+| Worker — ingest | Vercel Daemon `ingest` (`vercel.json` → `daemons.ingest`) — continuous source sweeps |
 | DB | Supabase hosted. `npm run db:migrate` with `DATABASE_URL` (direct connection) applies pending files and records them in `public.schema_migrations` |
 | Mobile | EAS Build (Expo) |
 
-`vercel.json` still schedules `/api/cron/match` (hourly, `:00`), `/api/cron/notify`
-(hourly, `:05`) and `/api/cron/credits` (hourly, `:15`) as a web-only fallback.
-They are safe to keep alongside the worker: matching upserts are idempotent and
-the dispatcher atomically claims rows, so a row can never be sent twice. Remove
-them if you want a single scheduler.
+`vercel.json` schedules only `/api/cron/credits` (hourly, `:15`) — the one job the
+daemons do not own. The old `/api/cron/match` and `/api/cron/notify` crons were
+removed because the `pulse` daemon now runs that loop every five minutes; keeping
+both schedulers would only contend for the same `worker_locks` lease. Every loop
+stays idempotent (matching upserts + atomic queue claims), so a retried or
+overlapping tick can never send a row twice.
 
-### Workers (launchd)
+### Workers (Vercel Daemons)
 
-The two background loops run as launchd agents on this Mac — no Docker, no
-extra packages. Reference plists live in `deploy/launchd/`:
+Both loops run as **Vercel Daemons** in the same project as the web tier. The
+`daemons` key in `vercel.json` builds each loop from the repo-root `Dockerfile`
+and keeps one instance running per region (the config pins `iad1`):
 
-| Agent | Script | Role |
-|-------|--------|------|
-| `com.kazana.ingest` | `scripts/worker/ingest.js` | continuous, incremental job-source sweep |
-| `com.kazana.pulse` | `scripts/worker/pulse.js` | match -> notify every 5 minutes |
+| Daemon | Start command | Role |
+|--------|---------------|------|
+| `ingest` | `node scripts/worker/ingest.js` | continuous, incremental job-source sweep |
+| `pulse` | `node scripts/worker/pulse.js` | match -> notify every 5 minutes |
 
-```
-# LaunchAgents need no sudo; the committed plists already carry the real paths
-mkdir -p ~/Library/LaunchAgents   # not present until the first agent is installed
-cp deploy/launchd/com.kazana.*.plist ~/Library/LaunchAgents/
-# bootstrap installs AND starts the agent immediately (RunAtLoad=true)
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kazana.ingest.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kazana.pulse.plist
-launchctl list | grep kazana
-tail -f ~/Library/Logs/kazana-pulse.log
-```
+Vercel builds `Dockerfile` once per daemon, runs the image on Fluid compute, and
+restarts any instance that exits or crashes. Daemons run **only in production**
+and only for a git/`vercel deploy` production deployment — preview deployments
+never start them. Each instance's `stdout`/`stderr` appears under the daemon in
+the Vercel dashboard.
 
-The agents rely on the built-in `.env` loader (no environment-file key needed):
-put `SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`) and
-`SUPABASE_SERVICE_ROLE_KEY` in the `.env` at the repo root. `KeepAlive` restarts
-a crashed worker automatically; `launchctl bootout gui/$(id -u) <label>` stops
-it.
+> **Plan requirement.** Daemons are a **Public Beta** and work on all plans, but
+> the Hobby quota — **5 Active CPU-hours + 420 GB-hours Provisioned Memory per
+> month** — cannot sustain two 24/7 instances (one 2 GiB instance alone exhausts
+> 420 GB-hours in ~9 days, and time spent idle still counts toward Provisioned
+> Memory). Use **Pro** for always-on workers; Hobby stops the daemons when the
+> quota is hit and restarts them on the first of the following month (UTC).
+
+The daemons read the same env as the container image — set
+`SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`) and `SUPABASE_SERVICE_ROLE_KEY`
+on the Vercel project, plus the optional `WORKER_*`, `DEEPSEEK_*` and
+`WHATSAPP_*` vars. On deploy/redeploy Vercel sends `SIGTERM` and the loop
+finishes its current unit of work; `terminationGracePeriodSeconds` in
+`vercel.json` bounds how long Vercel waits before force-stopping it.
 
 Both loops are guarded by the leased lock in `public.worker_locks` (migration
 `20261111000000_worker_locks.sql`): a second replica skips instead of
@@ -89,23 +94,35 @@ run expires automatically (ingest lease 15 min, pulse lease 5 min). Until the
 migration is applied the lock fails open (logs a warning and runs unguarded).
 
 The ingest is incremental (`jobs` are fetched only since the last
-`last_fetched_at` per source), so a warm pass takes minutes — not the ~80 min a
-cold, months-long sweep takes.
+`last_fetched_at` per source), so a warm pass takes minutes; only a cold
+backfill (`--full`, or a source that has never been fetched) is slow.
 
-These are LaunchAgents, so they run only while you are logged into the GUI
-session. To keep them alive headless (SSH-only, no login), copy the same plists
-to `/Library/LaunchDaemons/`, add `<key>UserName</key><string>aryan</string>`,
-and load them with `sudo launchctl bootstrap system ...`.
+**Scaling / stopping.** Change `instances` in `vercel.json` (one entry per
+region) or override counts from the dashboard without redeploying. Scaling a
+daemon to `0` turns it off; a new production deployment restarts the configured
+count.
 
-> **TCC gotcha (macOS).** A launchd agent cannot read `~/Documents`,
-> `~/Desktop`, or `~/Downloads` — the ESM loader's `package.json` lookup blocks
-> in `open()` and the worker appears to hang with empty logs. Keep the checkout
-> outside those folders (e.g. `/Users/aryan/kazana` or `/opt/kazana`) and point
-> the plists' `WorkingDirectory`/`ProgramArguments` there; alternatively grant
-> Full Disk Access to the `node` binary in System Settings.
+**Local fallback (optional).** `docker-compose.yml` still runs both loops on a
+container host (`docker compose up`), and the launchd plists in `deploy/launchd/`
+remain for running them on a Mac you log into. Both are opt-in and not required
+for production. On macOS, keep any checkout outside `~/Documents`, `~/Desktop`
+or `~/Downloads`: a launchd agent cannot read those (TCC blocks the ESM
+`package.json` lookup and the worker hangs with empty logs).
 
-The `Dockerfile` and `docker-compose.yml` remain as an alternative for a
-Linux/container host; launchd is the path on this Mac.
+**Retire the Mac agents.** Once the Vercel daemons are verified (see [Verify the
+pipeline end to end](#verify-the-pipeline-end-to-end)), stop and remove the local
+launchd agents so nothing runs twice:
+
+```bash
+launchctl bootout gui/$(id -u) com.kazana.ingest 2>/dev/null || true
+launchctl bootout gui/$(id -u) com.kazana.pulse 2>/dev/null || true
+rm -f ~/Library/LaunchAgents/com.kazana.ingest.plist \
+      ~/Library/LaunchAgents/com.kazana.pulse.plist
+launchctl list | grep kazana || echo 'kazana agents removed'
+```
+
+While both paths are briefly running, the `worker_locks` leases make the overlap
+harmless — only one path should remain the source of truth.
 
 Before the first run: apply the migration (`DATABASE_URL=... npm run db:migrate`
 or paste it into the Supabase SQL Editor).
@@ -119,21 +136,21 @@ or paste it into the Supabase SQL Editor).
 
 ---
 
-## Why the workers are not Vercel Functions
+## Why the workers run as daemons (not Vercel Functions)
 
 The web tier is a request/response app; both loops are long-running jobs.
 
 - Ingestion sweeps **every active `job_sources` row** — currently **114 sources**.
   Measured from `ingestion_runs` (129 runs over the last 36 h): **median ~96 s per
   source, p90 ~12 min, max ~1.8 h** (large boards such as `gh-spacex`, and
-  Workday sources that paginate slowly). One sequential pass is therefore
-  **hours**, far beyond the 60 s (Hobby) / 300 s (Pro) function limit, and Vercel
-  Cron on Hobby cannot run sub-daily at all.
+  Workday sources that paginate slowly). A single source can outlast a
+  serverless function's per-invocation ceiling, so the loop owns a long-lived
+  process instead of being chunked into function calls.
 - Matching is CPU-bound and grows with `users × jobs`; keeping it off the web
   tier protects request latency.
-- The ingest CLI writes `logs/ingest-metrics/*.json`. Container filesystems are
-  ephemeral — mount a volume if you need those files, or read `ingestion_runs`
-  in Postgres instead.
+- The ingest CLI also writes `logs/ingest-metrics/*.json`, but daemon disks are
+  ephemeral: treat those files as best-effort and read `ingestion_runs` in
+  Postgres as the durable record.
 
 The **5-minute requirement belongs to the pulse**, not to a full ingest pass:
 
@@ -150,17 +167,20 @@ runNotifications → Expo push / WhatsApp Cloud API → sent_at
 A newly ingested job is scored, enqueued and dispatched within one pulse
 (≤ 5 min). **Source freshness is a different budget** and cannot be 5 minutes
 for all 114 sources from one process:
-`pass_minutes ≈ Σ per-source seconds ÷ concurrency`. The measured source work
-per pass is ~630 min, so at concurrency 8 a pass is **~80 min**, and ~40 min at
-the code's cap of 16. Each source is refreshed **once per pass (~40–80 min)**;
+`pass_minutes ≈ Σ per-source seconds ÷ concurrency`. Steady-state (warm) passes
+are incremental and take minutes because `last_fetched_at` narrows each source
+to its new jobs; the multi-hour figure in older notes was a cold, months-long
+backfill, not a warm pass. Each source is refreshed roughly once per pass;
 alert latency is still ≤ 5 min *after* that refresh.
 
 To push freshness closer to the pulse cadence (not implemented yet):
 
 - Raise `WORKER_INGEST_CONCURRENCY` (16 is the hard cap in `runIngestion`).
-- Shard `job_sources` across several replicas, each with its own loop.
+- Run more `ingest` instances, one region per shard, each sweeping a disjoint
+  slice of `job_sources` (the leased `ingest` lock allows one active sweep today,
+  so sharding needs per-shard lock names).
 - Timebox pathological sources (`wd-*`, multi-thousand-job `gh-*` boards): a
-  single 70-minute run currently holds one slot for the whole pass.
+  single long run currently holds one slot for the whole pass.
 
 ---
 
@@ -173,33 +193,47 @@ To push freshness closer to the pulse cadence (not implemented yet):
 3. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
    `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, and `SENTRY_DSN` (optional).
 4. Deploy, then verify `/api/jobs` returns 200 and Google sign-in completes.
-5. Cron plan limits: Hobby cron jobs may run **once per day** and sub-daily
-   expressions **fail the deployment**. On Hobby, delete the `crons` array from
-   `vercel.json` and let the worker pulse own matching and delivery. On Pro the
-   hourly schedules work; Vercel invokes them with `GET` and sends
-   `CRON_SECRET` as a bearer token (the routes export both `POST` and `GET`).
+5. Cron plan limits: the only cron left is `/api/cron/credits`, which reconciles
+   stale reservations and monthly grants. Hobby cron jobs may run **once per day**
+   and sub-daily expressions **fail the deployment**, so on Hobby change its
+   schedule to daily (`15 3 * * *`) or remove it. On Pro the hourly schedule
+   works; Vercel invokes crons with `GET` and sends `CRON_SECRET` as a bearer
+   token (the routes export both `POST` and `GET`).
 
 ---
 
-## Deploy the worker tier (container host)
+## Deploy the worker tier (Vercel Daemons)
 
-Any container host works (Railway, Fly.io, Render, ECS, or a VPS with
-`docker run --restart unless-stopped`). The image runs the CLI scripts; the web
-tier is unaffected. This is the containerized alternative to the launchd agents
-above — use it on a Linux/container host, not on this Mac.
+The `daemons` block in `vercel.json` deploys both loops with the web tier in the
+same production deployment — there is no separate worker host. Each daemon builds
+the repo-root `Dockerfile` and runs one instance:
 
-```bash
-docker build -t kazana-worker .
+```json
+"daemons": {
+  "ingest": {
+    "root": ".",
+    "entrypoint": "Dockerfile",
+    "command": ["node", "scripts/worker/ingest.js"],
+    "instances": { "iad1": 1 },
+    "terminationGracePeriodSeconds": 300
+  },
+  "pulse": {
+    "root": ".",
+    "entrypoint": "Dockerfile",
+    "command": ["node", "scripts/worker/pulse.js"],
+    "instances": { "iad1": 1 },
+    "terminationGracePeriodSeconds": 120
+  }
+}
 ```
 
-Run **two services from the same image**, one replica each:
+Deploy with a normal production deployment (`git push` to `main` with the repo
+imported, or `vercel deploy --prod`). Daemons start only for **production**
+deployments. To change a command, image or env var, ship a new deployment; to
+change the instance count you can also use the dashboard.
 
-| Service | Command | Purpose |
-|---------|---------|---------|
-| `kazana-pulse` | `node scripts/worker/pulse.js` (image default) | match → notify every 5 min |
-| `kazana-ingest` | `node scripts/worker/ingest.js` | continuous source sweeps |
-
-Worker env (server only):
+Worker env (server only) — set on the Vercel project, sharing values with the web
+tier where they overlap:
 
 | Variable | Required | Notes |
 |----------|----------|-------|
@@ -215,17 +249,20 @@ Worker env (server only):
 | `WORKER_INGEST_COOLDOWN_MINUTES` | optional | default `5` pause between passes |
 
 Both loops run **sequentially** — a slow pass delays the next one but never
-overlaps it. Because of that, run exactly **one replica per service**; two ingest
-replicas would poll the same boards twice. Each loop catches its own errors and
+overlaps it. Because of that each daemon is pinned to **one instance**; two ingest
+instances would poll the same boards twice. Each loop catches its own errors and
 keeps running, so a Supabase or provider outage shows up as failed pulses in the
-logs, not as a dead process.
+daemon logs, not as a dead process.
 
-`--once` runs one pass and exits (exit code `1` if any stage failed), for hosts
-that prefer an external scheduler:
+`--once` still works (`node scripts/worker/ingest.js --once` /
+`node scripts/worker/pulse.js --once`) for a one-shot run from a shell or an
+external scheduler.
 
-```bash
-node scripts/worker/pulse.js --once
-```
+**Alternative container host.** The same image also runs on Railway, Fly.io,
+Render, ECS or a VPS: `docker build -t kazana-worker .`, then run
+`node scripts/worker/pulse.js` and `node scripts/worker/ingest.js` as two
+services, one replica each (see `docker-compose.yml`). Use this only when Vercel
+Daemons are not an option.
 
 ---
 
@@ -267,8 +304,8 @@ once the env vars are present. `npm run notify:manual` lists those same rows as
 
 ## Verify the pipeline end to end
 
-1. **Workers alive**: logs show `[worker] pulse starting` and a
-   `[worker] match` / `[worker] notify` pair every 5 minutes.
+1. **Daemons alive**: the Vercel daemon logs show `[worker] pulse starting`
+   and a `[worker] match` / `[worker] notify` pair every 5 minutes.
 2. **Ingestion**: `ingestion_runs` has recent `success` rows; the ingest log
    reports `jobs_upserted > 0` when boards change.
 3. **Matching**: `matches` gains rows for the new jobs. `runMatching` returns
@@ -364,7 +401,7 @@ See [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) for common OAuth issues.
 | API errors / latency | Vercel Analytics / Sentry |
 | DB performance | Supabase dashboard |
 | Ingestion success | Custom metrics table + alert |
-| Worker liveness | Container restart policy + alert on `[worker] *_failed` log lines |
+| Daemon health | Vercel daemon status + alert on `[worker] *_failed` log lines |
 | Push delivery | Expo dashboards |
 | Notification delivery | `GET /api/notifications` per-user log; Meta WhatsApp Manager for template status |
 
@@ -375,7 +412,7 @@ See [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) for common OAuth issues.
 | Layer | Rollback |
 |-------|----------|
 | Web/API | Vercel instant rollback to previous deployment |
-| Workers | Redeploy the previous image tag; both loops are idempotent (upserts + atomic queue claims) |
+| Workers | Roll back to the previous production deployment (daemons restart from the prior image); both loops are idempotent (upserts + atomic queue claims) |
 | DB | Forward-only migrations; write down migration for emergencies |
 | Mobile | Previous app version in stores; API backward compatible |
 
@@ -390,7 +427,7 @@ All subsystems deploy independently but share **schema version** — coordinate 
 ## Assumptions
 
 - Vercel for Next.js is acceptable vendor lock-in for web tier
-- One container replica per worker loop (pulse, ingest)
+- One daemon instance per loop (pulse, ingest), pinned to one region in `vercel.json`
 - Single Supabase region initially (e.g. US East)
 
 ---

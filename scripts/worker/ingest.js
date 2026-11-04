@@ -53,10 +53,11 @@ Environment:
   WORKER_INGEST_CONCURRENCY         Sources fetched in parallel (default ${DEFAULT_CONCURRENCY})
   WORKER_INGEST_COOLDOWN_MINUTES    Pause between sweeps (default ${DEFAULT_COOLDOWN_MINUTES})
 
-A full pass over ~114 sources is slow: measured source work is ~630 min, so
-expect ~80 minutes at concurrency 8 (~40 at the cap of 16). Raise
-WORKER_INGEST_CONCURRENCY to shorten passes, and watch ingestion_runs for
-provider rate limits. Delivery latency is handled by the separate pulse worker.
+Warm passes are incremental and take minutes: last_fetched_at narrows each
+source to its new jobs. Only a cold backfill (--full, or a source never fetched
+before) is slow. Raise WORKER_INGEST_CONCURRENCY to shorten passes, and watch
+ingestion_runs for provider rate limits. Delivery latency is handled by the
+separate pulse worker.
 `);
 }
 

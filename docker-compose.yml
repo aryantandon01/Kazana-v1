@@ -1,4 +1,7 @@
-# Kazana background workers — run on a small container host (not Vercel).
+# Kazana background workers — local/container fallback.
+#
+# Production runs these as Vercel Daemons (see vercel.json "daemons"); this
+# compose file is the optional container-host fallback.
 #
 # Two long-running processes, one per service, each expecting a single replica:
 #   ingest — continuous job-source sweep (incremental, minutes per warm pass)
